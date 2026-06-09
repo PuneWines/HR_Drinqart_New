@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Download, Filter } from 'lucide-react';
+import { Search, Download, Filter, RefreshCw, Loader2, Database } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { getMonthlyAttendanceFromSupabase, syncMonthlyAttendanceFromApi } from '../services/attendanceSync';
 
 const DEVICES = [
     { name: 'BAWDHAN', apiName: 'BAVDHAN', serial: 'C26238441B1E342D' },
@@ -10,8 +11,7 @@ const DEVICES = [
     { name: 'MUMBAI', apiName: 'MUMBAI', serial: 'C2630450C32A2327' }
 ];
 
-const JOINING_API_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch';
-const LEAVE_API_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Leave Management&action=fetch';
+const ALL_DEVICES_OPTION = { name: 'ALL DEVICES', apiName: 'ALL', serial: 'ALL' };
 
 const AttendanceMonthly = () => {
     const [searchTerm, setSearchTerm] = useState('');
@@ -19,286 +19,121 @@ const AttendanceMonthly = () => {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [selectedDevice, setSelectedDevice] = useState(DEVICES[0]);
     const [attendanceData, setAttendanceData] = useState([]);
-    const [joiningData, setJoiningData] = useState([]);
-    const [deviceMapping, setDeviceMapping] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [syncing, setSyncing] = useState(false);
     const [error, setError] = useState(null);
+    const [lastSynced, setLastSynced] = useState(null);
 
     const monthNames = [
         "January", "February", "March", "April", "May", "June",
         "July", "August", "September", "October", "November", "December"
     ];
 
-    const getDaysInMonth = (month, year) => {
-        return new Date(year, month, 0).getDate();
-    };
-
-    const formatSecsToHrsMins = (totalSecs) => {
-        if (!totalSecs) return '0h 0m';
-        const hrs = Math.floor(totalSecs / 3600);
-        const mins = Math.floor((totalSecs % 3600) / 60);
-        return `${hrs}h ${mins}m`;
-    };
-
-    const calculateLateMinutes = (timeStr) => {
-        if (!timeStr || timeStr === '-') return 0;
-        try {
-            const timePart = timeStr.split(' ')[1];
-            if (!timePart) return 0;
-            const [h, m] = timePart.split(':').map(Number);
-            const totalMins = h * 60 + m;
-            const threshold = 10 * 60 + 10; // 10:10 AM
-            const base = 10 * 60 + 0; // 10:00 AM
-            if (totalMins > threshold) return totalMins - base;
-            return 0;
-        } catch (e) { return 0; }
-    };
-
-    const timeToSeconds = (timeStr) => {
-        if (!timeStr || timeStr === '-' || timeStr === '0.0' || timeStr === '0') return 0;
-        try {
-            const timeMatch = timeStr.toString().match(/(\d+):(\d+):(\d+)/);
-            if (timeMatch) {
-                return parseInt(timeMatch[1], 10) * 3600 + parseInt(timeMatch[2], 10) * 60 + parseInt(timeMatch[3], 10);
-            }
-            if (timeStr.toString().includes('T')) {
-                const d = new Date(timeStr);
-                if (!isNaN(d.getTime())) {
-                    return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-                }
-            }
-        } catch (e) {
-            return 0;
-        }
-        return 0;
-    };
-
-    const secondsToTime = (totalSeconds) => {
-        if (!totalSeconds || totalSeconds === 0) return '-';
-        const absSeconds = Math.abs(totalSeconds);
-        const hours = Math.floor(absSeconds / 3600);
-        const minutes = Math.floor((absSeconds % 3600) / 60);
-        const seconds = absSeconds % 60;
-        const sign = totalSeconds < 0 ? '-' : '';
-        return `${sign}${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    };
-
-    const calculateDays = (startDateStr, endDateStr) => {
-        if (!startDateStr || !endDateStr) return 0;
-        let startDate, endDate;
-        try {
-            if (startDateStr.toString().includes('/')) {
-                const [startDay, startMonth, startYear] = startDateStr.toString().split('/').map(Number);
-                startDate = new Date(startYear, startMonth - 1, startDay);
-            } else {
-                startDate = new Date(startDateStr);
-            }
-
-            if (endDateStr.toString().includes('/')) {
-                const [endDay, endMonth, endYear] = endDateStr.toString().split('/').map(Number);
-                endDate = new Date(endYear, endMonth - 1, endDay);
-            } else {
-                endDate = new Date(endDateStr);
-            }
-            const diffTime = endDate.getTime() - startDate.getTime();
-            return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        } catch (e) {
-            return 0;
-        }
-    };
-
-    const formatTimeAMPM = (timeStr) => {
-        if (!timeStr || timeStr === '-') return '-';
-        if (timeStr.startsWith('-')) return timeStr;
-        const parts = timeStr.toString().split(':');
-        if (parts.length < 3) return timeStr;
-        const h = parseInt(parts[0], 10);
-        const m = parts[1];
-        const s = parts[2];
-
-        const isPM = (h % 24) >= 12;
-        const ampm = isPM ? 'PM' : 'AM';
-        let displayH = h % 12;
-        if (displayH === 0) displayH = 12;
-
-        return `${displayH.toString().padStart(2, '0')}:${m}:${s} ${ampm}`;
-    };
-
-    const getSundaysCount = (month, year) => {
-        let count = 0;
-        const days = new Date(year, month, 0).getDate();
-        for (let i = 1; i <= days; i++) {
-            if (new Date(year, month - 1, i).getDay() === 0) count++;
-        }
-        return count;
-    };
-
-    const fetchAttendanceData = async () => {
+    const fetchAttendanceData = async (forceSync = false) => {
         setLoading(true);
         setError(null);
 
         try {
-            // 1. Fetch Metadata (Joining & Master Mapping)
-            let currentJoining = joiningData;
-            if (joiningData.length === 0) {
-                const jRes = await fetch(JOINING_API_URL);
-                const jData = await jRes.json();
-                if (jData.success) {
-                    const raw = jData.data || jData;
-                    const headers = raw[5];
-                    const dataRows = raw.slice(6);
-                    const getIdx = (n) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === n.toLowerCase());
-
-                    currentJoining = dataRows.map(r => ({
-                        id: r[getIdx('Employee ID')]?.toString().trim(),
-                        name: r[getIdx('Name As Per Aadhar')]?.toString().trim(),
-                        designation: r[getIdx('Designation')]?.toString().trim()
-                    })).filter(h => h.id);
-                    setJoiningData(currentJoining);
-                }
-            }
-
-            const MASTER_MAP_URL = `https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=MASTER&action=fetch`;
-            const dmRes = await fetch(MASTER_MAP_URL);
-            const dmData = await dmRes.json();
-            let currentMapping = [];
-            if (dmData.success) {
-                const rows = dmData.data.slice(1);
-                currentMapping = rows.map(r => ({
-                    userId: r[5]?.toString().trim(),
-                    name: r[6]?.toString().trim(),
-                    deviceId: r[7]?.toString().trim(),
-                    serialNo: r[8]?.toString().trim(),
-                    storeName: r[9]?.toString().trim()
-                }));
-                setDeviceMapping(currentMapping);
-            }
-
-            const startDay = '01';
-            const endDay = getDaysInMonth(selectedMonth, selectedYear);
-            const paddedMonth = selectedMonth.toString().padStart(2, '0');
-            let fromDate = `${selectedYear}-${paddedMonth}-${startDay}`;
-            let toDate = `${selectedYear}-${paddedMonth}-${endDay}`;
-
             if (selectedYear < 2026 || (selectedYear === 2026 && selectedMonth < 4)) {
                 setAttendanceData([]);
+                setLastSynced(null);
                 return;
             }
 
-            const API_URL = `/api/device-logs?APIKey=211616032630&SerialNumber=${selectedDevice.serial}&DeviceName=${selectedDevice.apiName}&FromDate=${fromDate}&ToDate=${toDate}`;
-            const response = await fetch(API_URL);
-            if (!response.ok) throw new Error(`Status: ${response.status}`);
-            const rawLogs = await response.json();
-            if (!Array.isArray(rawLogs)) throw new Error('Invalid logs data');
+            // Handle "All Devices" case
+            if (selectedDevice.serial === 'ALL') {
+                // Fetch data from all devices in parallel
+                const allDevicesPromises = DEVICES.map(async (device) => {
+                    let dbRecords = await getMonthlyAttendanceFromSupabase(selectedMonth, selectedYear, device.serial);
 
-            const logs = rawLogs.filter(log => {
-                if (!log.LogDate) return false;
-                const logDateStr = log.LogDate.split(' ')[0];
-                return logDateStr >= '2026-04-01';
-            });
+                    const isCurrentMonth = selectedYear === new Date().getFullYear() && selectedMonth === (new Date().getMonth() + 1);
+                    let needsSync = false;
 
-            const dailyGrouped = {};
-            logs.sort((a, b) => new Date(a.LogDate) - new Date(b.LogDate));
+                    if (dbRecords.length === 0) {
+                        needsSync = true;
+                    } else if (isCurrentMonth) {
+                        const lastSyncedAt = dbRecords[0]?.lastSyncedAt;
+                        if (lastSyncedAt) {
+                            const diffMs = new Date() - new Date(lastSyncedAt);
+                            const diffHrs = diffMs / (1000 * 60 * 60);
+                            if (diffHrs > 6) {
+                                needsSync = true;
+                            }
+                        } else {
+                            needsSync = true;
+                        }
+                    }
 
-            logs.forEach(log => {
-                if (!log.EmployeeCode || !log.LogDate) return;
-                const dateKey = log.LogDate.split(' ')[0];
-                const key = `${log.EmployeeCode}_${dateKey}`;
-                if (!dailyGrouped[key]) dailyGrouped[key] = { id: log.EmployeeCode, date: dateKey, logs: [] };
-                dailyGrouped[key].logs.push(log.LogDate);
-            });
+                    if (forceSync || needsSync) {
+                        setSyncing(true);
+                        try {
+                            await syncMonthlyAttendanceFromApi(selectedMonth, selectedYear, device);
+                            dbRecords = await getMonthlyAttendanceFromSupabase(selectedMonth, selectedYear, device.serial);
+                        } catch (syncErr) {
+                            console.error(`Sync error for ${device.name}:`, syncErr);
+                        }
+                    }
 
-            const monthlyAgg = {};
-            const totalSundays = getSundaysCount(selectedMonth, selectedYear);
-            const totalDaysInMonth = getDaysInMonth(selectedMonth, selectedYear);
+                    return dbRecords;
+                });
 
-            Object.values(dailyGrouped).forEach(day => {
-                const id = day.id.toString().trim();
-                if (!monthlyAgg[id]) {
-                    monthlyAgg[id] = {
-                        id,
-                        presentDays: 0,
-                        lateDays: 0,
-                        punchMissDays: 0,
-                        totalWorkSecs: 0,
-                        totalLunchSecs: 0,
-                        holidayDays: 0,
-                        userId: id,
-                        actualSerial: day.logs[0] ? selectedDevice.serial : '-'
-                    };
-                }
+                const allResults = await Promise.all(allDevicesPromises);
+                const combinedData = allResults.flat();
 
-                const agg = monthlyAgg[id];
-                agg.presentDays += 1;
+                setAttendanceData(combinedData);
+                setLastSynced(new Date().toISOString());
+            } else {
+                // Single device logic
+                let dbRecords = await getMonthlyAttendanceFromSupabase(selectedMonth, selectedYear, selectedDevice.serial);
 
-                const inTime = day.logs[0];
-                const outTime = day.logs[day.logs.length - 1];
+                const isCurrentMonth = selectedYear === new Date().getFullYear() && selectedMonth === (new Date().getMonth() + 1);
+                let needsSync = false;
 
-                if (calculateLateMinutes(inTime) > 0) agg.lateDays += 1;
-                if (day.logs.length === 1) agg.punchMissDays += 1;
-                else {
-                    const start = new Date(inTime.replace(/-/g, '/'));
-                    const end = new Date(outTime.replace(/-/g, '/'));
-                    agg.totalWorkSecs += (end - start) / 1000;
-                    if (day.logs.length >= 4) {
-                        const lStart = new Date(day.logs[1].replace(/-/g, '/'));
-                        const lEnd = new Date(day.logs[2].replace(/-/g, '/'));
-                        agg.totalLunchSecs += (lEnd - lStart) / 1000;
+                if (dbRecords.length === 0) {
+                    needsSync = true;
+                } else if (isCurrentMonth) {
+                    const lastSyncedAt = dbRecords[0]?.lastSyncedAt;
+                    if (lastSyncedAt) {
+                        const diffMs = new Date() - new Date(lastSyncedAt);
+                        const diffHrs = diffMs / (1000 * 60 * 60);
+                        if (diffHrs > 6) {
+                            needsSync = true;
+                        }
+                    } else {
+                        needsSync = true;
                     }
                 }
-            });
 
-            const finalData = Object.values(monthlyAgg).map((agg, idx) => {
-                const code = agg.id.toString().trim();
-                const empMeta = currentJoining.find(e =>
-                    (e.id && e.id.toLowerCase() === code.toLowerCase()) ||
-                    (e.name && e.name.toLowerCase() === code.toLowerCase())
-                );
-
-                let dMap = currentMapping.find(m => m.userId && m.userId.toString().toLowerCase() === code.toLowerCase());
-
-                if (!dMap) {
-                    const entryName = (empMeta?.name || code).toString().trim().toLowerCase();
-                    dMap = currentMapping.find(m => m.name && m.name.toString().toLowerCase() === entryName);
+                if (forceSync || needsSync) {
+                    setSyncing(true);
+                    try {
+                        await syncMonthlyAttendanceFromApi(selectedMonth, selectedYear, selectedDevice);
+                        dbRecords = await getMonthlyAttendanceFromSupabase(selectedMonth, selectedYear, selectedDevice.serial);
+                    } catch (syncErr) {
+                        console.error("Sync error:", syncErr);
+                        if (dbRecords.length === 0) {
+                            throw syncErr;
+                        }
+                    } finally {
+                        setSyncing(false);
+                    }
                 }
 
-                const displayName = dMap ? dMap.name : (empMeta ? empMeta.name : (isNaN(code) ? code : 'Unknown'));
-                const displayCode = dMap ? dMap.userId : (empMeta ? empMeta.id : (isNaN(code) ? 'Unknown' : code));
-                const displayStore = dMap ? dMap.storeName : (empMeta ? empMeta.store : selectedDevice.name);
-                const displayDeviceId = dMap ? dMap.deviceId : '-';
-                const displayAssignedSerial = dMap ? dMap.serialNo : agg.actualSerial;
-
-                const absentDays = Math.max(0, totalDaysInMonth - agg.presentDays);
-
-
-
-                return {
-                    sNo: idx + 1,
-                    year: selectedYear,
-                    month: monthNames[selectedMonth - 1],
-                    employeeCode: displayCode,
-                    employeeName: displayName,
-                    designation: empMeta ? empMeta.designation : '-',
-                    storeName: displayStore,
-                    deviceId: displayDeviceId,
-                    serialNo: displayAssignedSerial,
-                    presentDays: agg.presentDays,
-                    absentDays: absentDays,
-                    punchMiss: agg.punchMissDays,
-                    lateDays: agg.lateDays,
-                    totalWorkHours: formatSecsToHrsMins(agg.totalWorkSecs),
-                    totalLunchTime: formatSecsToHrsMins(agg.totalLunchSecs),
-                    holidays: totalSundays
-                };
-            });
-
-            setAttendanceData(finalData);
+                setAttendanceData(dbRecords);
+                if (dbRecords.length > 0 && dbRecords[0]?.lastSyncedAt) {
+                    setLastSynced(dbRecords[0].lastSyncedAt);
+                } else {
+                    setLastSynced(null);
+                }
+            }
         } catch (err) {
             console.error(err);
             setError(err.message);
             setAttendanceData([]);
+            setLastSynced(null);
         } finally {
             setLoading(false);
+            setSyncing(false);
         }
     };
 
@@ -311,18 +146,18 @@ const AttendanceMonthly = () => {
 
     const filteredData = attendanceData.filter(item => {
         const matchesSearch =
-            item.employeeName.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.employeeCode.toString().toLowerCase().includes(searchTerm.toLowerCase());
+            item.employeeName?.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+            item.employeeCode?.toString().toLowerCase().includes(searchTerm.toLowerCase());
 
         const matchesMonth = selectedMonth ? item.month === monthNames[selectedMonth - 1] : true;
-        const matchesYear = selectedYear ? item.year.toString() === selectedYear.toString() : true;
+        const matchesYear = selectedYear ? item.year?.toString() === selectedYear.toString() : true;
 
         return matchesSearch && matchesMonth && matchesYear;
     });
 
     const downloadExcel = () => {
-        const dataToExport = filteredData.map(item => ({
-            'S.No.': item.sNo,
+        const dataToExport = filteredData.map((item, idx) => ({
+            'S.No.': idx + 1,
             'Month/Year': `${item.month} ${item.year}`,
             'Employee Code': item.employeeCode,
             'Employee Name': item.employeeName,
@@ -341,21 +176,47 @@ const AttendanceMonthly = () => {
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Monthly Attendance");
-        XLSX.writeFile(workbook, `attendance_${selectedMonth}_${selectedYear}.xlsx`);
+        XLSX.writeFile(workbook, `attendance_${selectedMonth}_${selectedYear}${selectedDevice.serial === 'ALL' ? '_all_devices' : ''}.xlsx`);
     };
 
     return (
         <div className="space-y-6 p-6 w-[75vw]">
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold">Attendance Records Monthly</h1>
-                <button
-                    onClick={downloadExcel}
-                    disabled={filteredData.length === 0}
-                    className={`flex items-center px-4 py-2 rounded-lg text-white ${filteredData.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-                >
-                    <Download size={20} className="mr-2" />
-                    Download Excel
-                </button>
+                <div className="flex items-center space-x-3">
+                    {lastSynced && (
+                        <div className="flex items-center text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full">
+                            <Database size={12} className="mr-1.5 text-slate-400" />
+                            <span>Synced: {new Date(lastSynced).toLocaleString('en-IN')}</span>
+                        </div>
+                    )}
+                    <button
+                        onClick={() => fetchAttendanceData(true)}
+                        disabled={loading || syncing}
+                        className={`flex items-center px-4 py-2 rounded-lg text-white font-medium text-sm transition-all shadow-md ${loading || syncing
+                                ? 'bg-indigo-300 cursor-not-allowed shadow-none'
+                                : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
+                            }`}
+                    >
+                        {syncing ? (
+                            <Loader2 size={16} className="mr-2 animate-spin" />
+                        ) : (
+                            <RefreshCw size={16} className="mr-2" />
+                        )}
+                        {syncing ? 'Syncing...' : 'Sync Logs'}
+                    </button>
+                    <button
+                        onClick={downloadExcel}
+                        disabled={filteredData.length === 0}
+                        className={`flex items-center px-4 py-2 rounded-lg text-white font-medium text-sm transition-all shadow-md ${filteredData.length === 0
+                                ? 'bg-gray-400 cursor-not-allowed shadow-none'
+                                : 'bg-green-600 hover:bg-green-700 shadow-green-100'
+                            }`}
+                    >
+                        <Download size={16} className="mr-2" />
+                        Download Excel
+                    </button>
+                </div>
             </div>
 
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-wrap gap-4 items-center">
@@ -378,13 +239,29 @@ const AttendanceMonthly = () => {
                     <div className="relative">
                         <select
                             value={selectedDevice.name}
-                            onChange={(e) => setSelectedDevice(DEVICES.find(d => d.name === e.target.value))}
+                            onChange={(e) => {
+                                const selected = e.target.value;
+                                if (selected === 'ALL DEVICES') {
+                                    setSelectedDevice(ALL_DEVICES_OPTION);
+                                } else {
+                                    setSelectedDevice(DEVICES.find(d => d.name === selected));
+                                }
+                            }}
                             className="w-full appearance-none pl-3 pr-10 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold text-slate-700"
                         >
-                            {DEVICES.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+                            <option value="ALL DEVICES" className="font-bold text-indigo-600">📊 ALL DEVICES</option>
+                            {DEVICES.map(d => (
+                                <option key={d.name} value={d.name}>{d.name}</option>
+                            ))}
                         </select>
                         <Filter size={16} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
                     </div>
+                    {selectedDevice.serial === 'ALL' && (
+                        <p className="text-[10px] text-indigo-600 font-bold mt-1 flex items-center">
+                            <Database size={10} className="mr-1" />
+                            Showing data from all devices combined
+                        </p>
+                    )}
                 </div>
 
                 <div className="min-w-[150px]">
@@ -409,6 +286,32 @@ const AttendanceMonthly = () => {
                     </select>
                 </div>
             </div>
+
+            {/* Summary Cards for All Devices View */}
+            {selectedDevice.serial === 'ALL' && attendanceData.length > 0 && !loading && (
+                <div className="grid grid-cols-5 gap-4">
+                    <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-3 border border-indigo-200">
+                        <p className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">Total Employees</p>
+                        <p className="text-2xl font-black text-indigo-900 mt-1">{new Set(attendanceData.map(d => d.employeeCode)).size}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-3 border border-green-200">
+                        <p className="text-[10px] font-black text-green-600 uppercase tracking-wider">Total Present Days</p>
+                        <p className="text-2xl font-black text-green-900 mt-1">{attendanceData.reduce((sum, d) => sum + (parseInt(d.presentDays) || 0), 0)}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-rose-50 to-rose-100 rounded-xl p-3 border border-rose-200">
+                        <p className="text-[10px] font-black text-rose-600 uppercase tracking-wider">Total Absent Days</p>
+                        <p className="text-2xl font-black text-rose-900 mt-1">{attendanceData.reduce((sum, d) => sum + (parseInt(d.absentDays) || 0), 0)}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-3 border border-orange-200">
+                        <p className="text-[10px] font-black text-orange-600 uppercase tracking-wider">Total Late Days</p>
+                        <p className="text-2xl font-black text-orange-900 mt-1">{attendanceData.reduce((sum, d) => sum + (parseInt(d.lateDays) || 0), 0)}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-3 border border-blue-200">
+                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-wider">Devices</p>
+                        <p className="text-2xl font-black text-blue-900 mt-1">{new Set(attendanceData.map(d => d.serialNo)).size}</p>
+                    </div>
+                </div>
+            )}
 
             {/* Table */}
             <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -448,7 +351,7 @@ const AttendanceMonthly = () => {
                                     <td colSpan="15" className="px-6 py-12 text-center">
                                         <p className="text-red-500 font-medium mb-3">Error: {error}</p>
                                         <button
-                                            onClick={fetchAttendanceData}
+                                            onClick={() => fetchAttendanceData()}
                                             className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium shadow-sm transition-colors"
                                         >
                                             Retry
@@ -458,7 +361,7 @@ const AttendanceMonthly = () => {
                             ) : filteredData.length > 0 ? (
                                 filteredData.map((item, index) => (
                                     <tr key={index} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{item.sNo}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{index + 1}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-center text-[10px] font-bold text-gray-500">{item.month} {item.year}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-slate-700">{item.employeeCode}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs font-black text-indigo-600">{item.employeeName}</td>
