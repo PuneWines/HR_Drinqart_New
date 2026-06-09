@@ -122,7 +122,7 @@ export default function Login({ onLogin }) {
                         HR
                     </div>
                     <h1 className="text-2xl font-bold text-white tracking-tight flex items-center justify-center gap-2">
-                        HR Drinqart <Sparkles size={18} className="text-indigo-400" />
+                        HR Drinqkart <Sparkles size={18} className="text-indigo-400" />
                     </h1>
                     <p className="text-slate-400 text-sm mt-1">Manage attendance, payroll & operations</p>
                 </div>

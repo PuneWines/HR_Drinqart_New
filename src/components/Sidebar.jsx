@@ -58,7 +58,7 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
           </div>
           {!collapsed && (
             <div className="overflow-hidden">
-              <p className="text-white font-bold text-sm leading-tight">Drinqart</p>
+              <p className="text-white font-bold text-sm leading-tight">DrinqKart</p>
               <p className="text-indigo-300 text-xs">HR Management</p>
             </div>
           )}
