@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { LogOut } from 'lucide-react'
 
 const navItems = [
   { to: '/', label: 'Dashboard', id: 'nav-dashboard' },
@@ -20,7 +21,7 @@ const navItems = [
 ]
 
 
-export default function Sidebar({ collapsed, setCollapsed }) {
+export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
   const location = useLocation()
   const isAttendanceActive = location.pathname.startsWith('/attendance')
   const [attendanceOpen, setAttendanceOpen] = useState(isAttendanceActive)
@@ -163,18 +164,41 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
         {/* User profile */}
         <div className="p-4 border-t border-indigo-800">
-          <div className={`flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-indigo-800 transition-colors cursor-pointer`}>
-            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-bold shrink-0">
-              A
-            </div>
-            {!collapsed && (
-              <div className="overflow-hidden flex-1">
-                <p className="text-sm font-medium text-white truncate">Admin User</p>
-                <p className="text-xs text-indigo-300 truncate">admin@jagwani.com</p>
+          {collapsed ? (
+            <button
+              onClick={onLogout}
+              className="w-8 h-8 rounded-full bg-white/20 hover:bg-red-600/30 hover:text-red-200 flex items-center justify-center text-white text-xs font-bold transition-all relative group cursor-pointer mx-auto"
+              title="Log Out"
+            >
+              <span className="group-hover:hidden uppercase">
+                {user?.name ? user.name.charAt(0) : 'U'}
+              </span>
+              <LogOut size={16} className="hidden group-hover:block" />
+            </button>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 overflow-hidden flex-1">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-bold shrink-0 uppercase">
+                  {user?.name ? user.name.charAt(0) : 'U'}
+                </div>
+                <div className="overflow-hidden flex-1 text-left">
+                  <p className="text-sm font-medium text-white truncate" title={user?.name || 'User'}>
+                    {user?.name || 'User'}
+                  </p>
+                  <p className="text-xs text-indigo-300 truncate" title={user?.email || ''}>
+                    {user?.email || ''}
+                  </p>
+                </div>
               </div>
-            )}
-            {!collapsed && <span className="text-indigo-400 text-xs shrink-0">↗</span>}
-          </div>
+              <button
+                onClick={onLogout}
+                className="p-1.5 rounded-lg hover:bg-indigo-800 text-indigo-300 hover:text-white transition-colors cursor-pointer shrink-0"
+                title="Log Out"
+              >
+                <LogOut size={18} />
+              </button>
+            </div>
+          )}
         </div>
       </aside>
     </>

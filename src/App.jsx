@@ -8,24 +8,58 @@ import LeaveManagement from './pages/LeaveManagement'
 import Payroll from './pages/Payroll'
 import MisReport from './pages/MisReport'
 import AdminAdvance from './pages/AdminAdvance'
+import Login from './pages/Login'
 import { Recruitment, Reports, Settings } from './pages/StubPages'
+import { Toaster } from 'react-hot-toast'
 
 function App() {
   const [collapsed, setCollapsed] = useState(false)
+  const [user, setUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem('hr_user')
+      return savedUser ? JSON.parse(savedUser) : null
+    } catch (e) {
+      console.error('Error parsing cached user:', e)
+      return null
+    }
+  })
+
+  const handleLogin = (userData) => {
+    localStorage.setItem('hr_user', JSON.stringify(userData))
+    setUser(userData)
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('hr_user')
+    setUser(null)
+  }
+
+  if (!user) {
+    return (
+      <>
+        <Login onLogin={handleLogin} />
+        <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+      </>
+    )
+  }
 
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-slate-50 flex">
         {/* Sidebar */}
-        <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+        <Sidebar 
+          collapsed={collapsed} 
+          setCollapsed={setCollapsed} 
+          user={user} 
+          onLogout={handleLogout} 
+        />
 
         {/* Main content */}
         <div
-          className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out ${collapsed ? 'lg:ml-16' : 'lg:ml-64'
-            }`}
+          className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out ${
+            collapsed ? 'lg:ml-16' : 'lg:ml-64'
+          }`}
         >
-
-
           {/* Page content */}
           <main className="flex-1 overflow-auto">
             <Routes>
@@ -45,6 +79,7 @@ function App() {
           </main>
         </div>
       </div>
+      <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
     </BrowserRouter>
   )
 }
