@@ -923,7 +923,7 @@ const Payroll = () => {
     };
 
     return (
-        <div className="p-10 pt-5 w-[83vw]">
+        <div className="p-10 pt-5 w-[80vw]">
             {/* Header */}
             <div className="flex justify-between items-center mb-6">
                 <div>
