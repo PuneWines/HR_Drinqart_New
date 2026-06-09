@@ -17,7 +17,7 @@ const AttendanceMonthly = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-    const [selectedDevice, setSelectedDevice] = useState(DEVICES[0]);
+    const [selectedDevice, setSelectedDevice] = useState(ALL_DEVICES_OPTION);
     const [attendanceData, setAttendanceData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
@@ -194,8 +194,8 @@ const AttendanceMonthly = () => {
                         onClick={() => fetchAttendanceData(true)}
                         disabled={loading || syncing}
                         className={`flex items-center px-4 py-2 rounded-lg text-white font-medium text-sm transition-all shadow-md ${loading || syncing
-                                ? 'bg-indigo-300 cursor-not-allowed shadow-none'
-                                : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
+                            ? 'bg-indigo-300 cursor-not-allowed shadow-none'
+                            : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
                             }`}
                     >
                         {syncing ? (
@@ -209,8 +209,8 @@ const AttendanceMonthly = () => {
                         onClick={downloadExcel}
                         disabled={filteredData.length === 0}
                         className={`flex items-center px-4 py-2 rounded-lg text-white font-medium text-sm transition-all shadow-md ${filteredData.length === 0
-                                ? 'bg-gray-400 cursor-not-allowed shadow-none'
-                                : 'bg-green-600 hover:bg-green-700 shadow-green-100'
+                            ? 'bg-gray-400 cursor-not-allowed shadow-none'
+                            : 'bg-green-600 hover:bg-green-700 shadow-green-100'
                             }`}
                     >
                         <Download size={16} className="mr-2" />
