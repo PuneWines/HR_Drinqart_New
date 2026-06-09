@@ -181,7 +181,7 @@ const AttendanceMonthly = () => {
     const totalLate = attendanceData.reduce((sum, d) => sum + (parseInt(d.lateDays) || 0), 0);
 
     return (
-        <div className="p-5  pt-2">
+        <div className="p-5 pt-2 w-[80vw]">
             {/* Header */}
             <div className="flex justify-between items-center mb-6">
                 <div>
