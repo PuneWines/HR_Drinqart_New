@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Loader2, Download, Plus, X, Calendar, Save, Edit2 } from 'lucide-react';
+import { Search, Loader2, Download, Plus, X, Calendar, Save, Edit2, Filter, Users, DollarSign, TrendingUp, CheckCircle, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-
 
 const DEVICES = [
     { name: 'BAWDHAN', apiName: 'BAVDHAN', serial: 'C26238441B1E342D' },
@@ -18,7 +16,7 @@ const Payroll = () => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [salaryData, setSalaryData] = useState({ headers: [], rows: [] });
-    const [payrollRowMap, setPayrollRowMap] = useState({}); // "EMPID_Month_Year" -> real sheet row number
+    const [payrollRowMap, setPayrollRowMap] = useState({});
     const [historyData, setHistoryData] = useState({ headers: [], rows: [] });
 
     const [loading, setLoading] = useState(false);
@@ -26,9 +24,8 @@ const Payroll = () => {
     const [showModal, setShowModal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [employees, setEmployees] = useState([]);
-    // --- Edit & Select State ---
-    const [selectedRows, setSelectedRows] = useState(new Set()); // Set of rowIndexes
-    const [editingData, setEditingData] = useState({});         // rowIndex -> [...cellValues]
+    const [selectedRows, setSelectedRows] = useState(new Set());
+    const [editingData, setEditingData] = useState({});
     const [isUpdating, setIsUpdating] = useState(false);
     const [isSubmittingPayments, setIsSubmittingPayments] = useState(false);
 
@@ -44,29 +41,31 @@ const Payroll = () => {
         advanceDeduction: '0',
         brackage: '0',
         medical: '0',
-        totalSalary: '0',       // New field for calculation result
+        totalSalary: '0',
         payDate: new Date().toISOString().split('T')[0]
     });
 
-    const [baseSalary, setBaseSalary] = useState(0); // To track original salary for deductions
-
-
     const PAYROLL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby1QHKttecIhZwoyh8-xo_wzqHgxIuFr9Tci8L803T1q0nKkjA1w26soUXSffkMY4E0sQ/exec';
+    const JOINING_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec';
 
+    // Summary stats
+    const totalSalaryAmount = salaryData.rows?.reduce((sum, row) => {
+        const totalSalIdx = salaryData.headers?.findIndex(h => h?.toString().toLowerCase().includes('total salary'));
+        return sum + (parseFloat(row[totalSalIdx]) || 0);
+    }, 0) || 0;
+
+    const totalEmployees = salaryData.rows?.length || 0;
 
     const formatDate = (dateStr) => {
         if (!dateStr) return '';
-
         let date;
         if (dateStr instanceof Date) {
             date = dateStr;
         } else {
-            // Try to parse common formats
             const iso = Date.parse(dateStr);
             if (!isNaN(iso)) {
                 date = new Date(iso);
             } else {
-                // Try dd/mm/yyyy
                 const parts = dateStr.toString().split(/[\/\-]/);
                 if (parts.length === 3) {
                     let [day, month, year] = parts.map(p => parseInt(p, 10));
@@ -75,9 +74,7 @@ const Payroll = () => {
                 }
             }
         }
-
         if (!date || isNaN(date.getTime())) return dateStr;
-
         const y = date.getFullYear();
         const m = String(date.getMonth() + 1).padStart(2, '0');
         const d = String(date.getDate()).padStart(2, '0');
@@ -88,17 +85,15 @@ const Payroll = () => {
         setLoading(true);
         setError(null);
         try {
-            // 1. Fetch spreadsheet records
             const response = await fetch(`${PAYROLL_SCRIPT_URL}?sheet=PAYROLL&action=fetch&spreadsheetId=1lg8cvRaYHpnR75bWxHoh-a30-gGL94-_WAnE7Zue6r8`);
             const result = await response.json();
             let spreadsheetRows = [];
             let spreadsheetHeaders = [];
             if (result.success && result.data && result.data.length > 2) {
-                spreadsheetHeaders = result.data[2]; // Row 3
-                spreadsheetRows = result.data.slice(3); // Row 4+
+                spreadsheetHeaders = result.data[2];
+                spreadsheetRows = result.data.slice(3);
             }
 
-            // 2. Fetch Metadata (JOINING)
             const jRes = await fetch(`${JOINING_SCRIPT_URL}?sheet=JOINING&action=fetch`);
             const jData = await jRes.json();
             let joiningRows = [];
@@ -114,7 +109,6 @@ const Payroll = () => {
                 designation: r[getJIdx('Designation')]?.toString().trim()
             })).filter(h => h.id);
 
-            // 3. Fetch Master Mapping (from JOINING script - for employee details)
             const MASTER_MAP_URL = `${JOINING_SCRIPT_URL}?sheet=MASTER&action=fetch`;
             const dmRes = await fetch(MASTER_MAP_URL);
             const dmData = await dmRes.json();
@@ -128,42 +122,31 @@ const Payroll = () => {
                 }));
             }
 
-            // 3b. Fetch Monthly Salary + Designation from PAYROLL MASTER sheet
-            //   Col A (index 0) = EMP ID
-            //   Col C (index 2) = Designation
-            //   Col F (index 5) = Monthly Salary
-            const masterSalaryMap = {};      // empId -> monthlySalary
-            const masterDesignationMap = {}; // empId -> designation
-            const masterDojMap = {};         // empId -> doj
+            const masterSalaryMap = {};
+            const masterDesignationMap = {};
+            const masterDojMap = {};
             try {
                 const salRes = await fetch(`${PAYROLL_SCRIPT_URL}?sheet=MASTER&action=fetch&spreadsheetId=1lg8cvRaYHpnR75bWxHoh-a30-gGL94-_WAnE7Zue6r8`);
                 const salData = await salRes.json();
                 if (salData.success && salData.data) {
-                    const salRows = salData.data.slice(1); // skip header row
+                    const salRows = salData.data.slice(1);
                     salRows.forEach(r => {
-                        const empId = r[0]?.toString().trim(); // Column A = EMP ID
+                        const empId = r[0]?.toString().trim();
                         if (!empId) return;
-                        const salary = r[5]; // Column F = Monthly Salary
-                        const desig = r[2]; // Column C = Designation
-                        const doj = r[4]; // Column E = DOJ
-                        if (salary !== undefined && salary !== '') {
-                            masterSalaryMap[empId] = Number(salary) || 0;
-                        }
-                        if (desig !== undefined && desig !== '') {
-                            masterDesignationMap[empId] = desig.toString().trim();
-                        }
-                        if (doj !== undefined && doj !== '') {
-                            masterDojMap[empId] = doj.toString().trim();
-                        }
+                        const salary = r[5];
+                        const desig = r[2];
+                        const doj = r[4];
+                        if (salary !== undefined && salary !== '') masterSalaryMap[empId] = Number(salary) || 0;
+                        if (desig !== undefined && desig !== '') masterDesignationMap[empId] = desig.toString().trim();
+                        if (doj !== undefined && doj !== '') masterDojMap[empId] = doj.toString().trim();
                     });
                 }
             } catch (e) {
                 console.error('Failed to load data from MASTER sheet:', e);
             }
 
-            // 4. Fetch Attendance for all devices
             const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-            const attendanceAgg = {}; // code -> totalPresent
+            const attendanceAgg = {};
             const globalDailyGrouped = {};
             const logsAvailable = !(selectedYear < 2026 || (selectedYear === 2026 && selectedMonth < 4));
 
@@ -173,7 +156,6 @@ const Payroll = () => {
             let fromDate = `${selectedYear}-${paddedMonth}-${startDay}`;
             let toDate = `${selectedYear}-${paddedMonth}-${endDay}`;
 
-            // Only fetch logs if in 2026-04 onwards
             if (logsAvailable) {
                 await Promise.all(DEVICES.map(async (dev) => {
                     try {
@@ -192,22 +174,15 @@ const Payroll = () => {
                         console.error(`Error fetching logs for ${dev.name}`, e);
                     }
                 }));
-
-                // Convert global map to per-employee counts
                 Object.keys(globalDailyGrouped).forEach(key => {
                     const code = key.split('_')[0];
                     attendanceAgg[code] = (attendanceAgg[code] || 0) + 1;
                 });
             }
 
-            // 5. Merge Strategy
-            // If a row exists in spreadsheet for this Emp + Month + Year, use it.
-            // Otherwise, create "virtual" row for everyone in Master/Joining.
-
             const monthStr = monthNames[selectedMonth - 1];
             const yearStr = selectedYear.toString();
 
-            // Ensure specific columns are present in headers
             const requiredHeaders = ['EMP ID', 'Name of the Employee', 'Year', 'Month', 'Designation', 'Location', 'Total Present'];
             const finalHeaders = [...spreadsheetHeaders];
             requiredHeaders.forEach(rh => {
@@ -226,9 +201,8 @@ const Payroll = () => {
             const locIdx = getIdx('Location');
             const presentIdx = getIdx('Total Present');
 
-            // Index of spreadsheet data for quick lookup
             const spreadsheetMap = {};
-            const rowNumberMap = {}; // key -> real sheet row number (1-based)
+            const rowNumberMap = {};
             const ssEmpIdIdx = spreadsheetHeaders.findIndex(h => h && h.toString().trim().toLowerCase() === 'emp id');
             const ssMonthIdx = spreadsheetHeaders.findIndex(h => h && h.toString().trim().toLowerCase() === 'month');
             const ssYearIdx = spreadsheetHeaders.findIndex(h => h && h.toString().trim().toLowerCase() === 'year');
@@ -239,7 +213,6 @@ const Payroll = () => {
                 if (id && m && y) {
                     const key = `${id}_${m}_${y}`;
                     spreadsheetMap[key] = row;
-                    // spreadsheetRows starts at data.slice(3), so index 0 = sheet row 4
                     rowNumberMap[key] = i + 4;
                 }
             });
@@ -254,7 +227,6 @@ const Payroll = () => {
 
                 let row = new Array(finalHeaders.length).fill('');
 
-                // If existing row, fill what we have
                 if (existing) {
                     spreadsheetHeaders.forEach((h, i) => {
                         const targetIdx = finalHeaders.indexOf(h);
@@ -267,7 +239,6 @@ const Payroll = () => {
                     (j.name && j.name.toLowerCase() === m.name.toLowerCase())
                 );
 
-                // Populate/Override with metadata
                 if (empIdIdx !== -1) row[empIdIdx] = m.userId;
                 if (nameIdx !== -1) row[nameIdx] = m.name;
                 if (yearIdx !== -1) row[yearIdx] = yearStr;
@@ -275,7 +246,6 @@ const Payroll = () => {
                 if (desigIdx !== -1 && empMeta) row[desigIdx] = empMeta.designation;
                 if (locIdx !== -1) row[locIdx] = m.storeName;
 
-                // Map Monthly Salary from MASTER sheet (F column) by EMP ID
                 const monthSalIdx2 = getIdx('Monthly Salary');
                 const masterSalary = masterSalaryMap[m.userId];
                 if (monthSalIdx2 !== -1 && masterSalary !== undefined) {
@@ -284,13 +254,11 @@ const Payroll = () => {
                     }
                 }
 
-                // Map Designation from MASTER sheet (C column) by EMP ID
                 const masterDesig = masterDesignationMap[m.userId];
                 if (desigIdx !== -1 && masterDesig) {
                     row[desigIdx] = masterDesig;
                 }
 
-                // Map DOJ from MASTER sheet (E column) by EMP ID
                 const masterDoj = masterDojMap[m.userId];
                 const dojIdx1 = finalHeaders.findIndex(h => h && ['doi', 'doj', 'date of joining'].includes(h.toString().toLowerCase().trim()));
                 if (dojIdx1 !== -1 && masterDoj) {
@@ -299,22 +267,16 @@ const Payroll = () => {
                     }
                 }
 
-                // Total Present Logic:
-                // Priority:
-                // 1. If Logs are available (April 2026+), use API Count + Mgmt Adjustment.
-                // 2. If Logs NOT available, use existing spreadsheet data.
                 let apiCount = attendanceAgg[m.userId] || 0;
                 let calculatedPresent = logsAvailable ? apiCount :
                     (existing && existing[spreadsheetHeaders.indexOf('Total Present')] ? Number(existing[spreadsheetHeaders.indexOf('Total Present')]) : 0);
 
-                // Add Mgmt Adjustment if exists
                 const mgmtAdjIdx2 = getIdx('Mgmt Adjustment');
                 if (mgmtAdjIdx2 !== -1 && row[mgmtAdjIdx2]) {
                     calculatedPresent += (Number(row[mgmtAdjIdx2]) || 0);
                 }
                 if (presentIdx !== -1) row[presentIdx] = calculatedPresent;
 
-                // Auto Calculate Total Salary
                 const monthSalIdx = getIdx('Monthly Salary');
                 const daysMonthIdx = getIdx('Days in a Month');
                 const brackageIdx = finalHeaders.findIndex(h => h && ['brackage', 'brackege', 'breakage'].includes(h.toString().toLowerCase().trim()));
@@ -336,7 +298,6 @@ const Payroll = () => {
                 return row;
             });
 
-            // Append any rows from spreadsheet that match the month/year but are NOT in currentMapping
             Object.keys(spreadsheetMap).forEach(key => {
                 const parts = key.split('_');
                 if (parts.length >= 3) {
@@ -352,12 +313,10 @@ const Payroll = () => {
                             if (targetIdx !== -1) row[targetIdx] = existing[i];
                         });
 
-                        // Maintain explicit IDs for Paid Record
                         if (empIdIdx !== -1) {
                             row[empIdIdx] = kEmpId;
                         }
 
-                        // Map DOJ from MASTER sheet for direct spreadsheet rows:
                         const masterDojDirect = masterDojMap[kEmpId];
                         const dojIdx2 = finalHeaders.findIndex(h => h && ['doi', 'doj', 'date of joining'].includes(h.toString().toLowerCase().trim()));
                         if (dojIdx2 !== -1 && masterDojDirect) {
@@ -366,7 +325,6 @@ const Payroll = () => {
                             }
                         }
 
-                        // Total Present Logic for direct spreadsheet rows:
                         let apiCount = attendanceAgg[kEmpId] || 0;
                         let calculatedPresent = logsAvailable ? apiCount :
                             (existing && existing[spreadsheetHeaders.indexOf('Total Present')] ? Number(existing[spreadsheetHeaders.indexOf('Total Present')]) : 0);
@@ -377,7 +335,6 @@ const Payroll = () => {
                         }
                         if (presentIdx !== -1) row[presentIdx] = calculatedPresent;
 
-                        // Auto Calculate Total Salary
                         const monthSalIdx = getIdx('Monthly Salary');
                         const daysMonthIdx = getIdx('Days in a Month');
                         const brackageIdx = finalHeaders.findIndex(h => h && ['brackage', 'brackege', 'breakage'].includes(h.toString().toLowerCase().trim()));
@@ -401,7 +358,6 @@ const Payroll = () => {
                 }
             });
 
-            // Remove rows with no EMP ID or Name (null/empty rows)
             const cleanedRows = mergedRows.filter(row => {
                 const id = row[empIdIdx]?.toString().trim();
                 const name = row[nameIdx]?.toString().trim();
@@ -450,9 +406,6 @@ const Payroll = () => {
         fetchEmployees();
     }, [activeTab, selectedMonth, selectedYear]);
 
-    // Dedicated JOINING sheet script (same as Employee.jsx, Dashboard.jsx, LeaveManagement.jsx)
-    const JOINING_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec';
-
     const fetchEmployees = async () => {
         try {
             const response = await fetch(
@@ -460,8 +413,6 @@ const Payroll = () => {
             );
             const result = await response.json();
             if (result.success && result.data) {
-                // E7:E → data starts row 7 (index 6)
-                // Col B (1) = ID, Col E (4) = Name, Col G (6) = DOJ, Col H (7) = Place, Col I (8) = Designation, Col J (9) = Salary
                 const emps = result.data.slice(6)
                     .filter(row => row[4] && row[4].toString().trim() !== '')
                     .map(row => ({
@@ -494,7 +445,7 @@ const Payroll = () => {
             advanceDeduction: '0',
             brackage: '0',
             medical: '0',
-            totalSalary: joinSalary  // Initial Net is base
+            totalSalary: joinSalary
         }));
     };
 
@@ -507,15 +458,11 @@ const Payroll = () => {
 
         setFormData(prev => {
             const updated = { ...prev, [name]: value };
-
-            // Total Salary = Monthly - Adv - Brack - Med
             const monthly = name === 'monthlySalary' ? Number(value) : Number(prev.monthlySalary || 0);
             const advance = name === 'advanceDeduction' ? Number(value) : Number(prev.advanceDeduction || 0);
             const brack = name === 'brackage' ? Number(value) : Number(prev.brackage || 0);
             const med = name === 'medical' ? Number(value) : Number(prev.medical || 0);
-
             updated.totalSalary = (monthly - advance - brack - med).toString();
-
             return updated;
         });
     };
@@ -532,29 +479,28 @@ const Payroll = () => {
             const now = new Date();
             const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-            // A=S.N | B:P=Layout as per Image | Q=Creation Date
             const monthIndex = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(formData.month);
             const daysInMonth = new Date(Number(formData.year), monthIndex + 1, 0).getDate();
             const creationDate = now.toISOString().split('T')[0];
 
             const rowData = [
-                '',                         // A (0) - S.N
-                formData.employeeId,        // B (1) - EMP ID
-                formData.employeeName,      // C (2) - Name of the Employee
-                formData.designation,       // D (3) - Designation
-                formData.joiningPlace,      // E (4) - Location
-                formData.dateOfJoining,     // F (5) - DOI
-                formData.monthlySalary,     // G (6) - Monthly Salary
-                daysInMonth,                // H (7) - Days in a Month
-                '0',                        // I (8) - Mgmt Adjustment
-                '0',                        // J (9) - Total Present
-                formData.advanceDeduction,  // K (10) - Advance Deduction
-                formData.brackage,          // L (11) - Brackage
-                formData.medical,           // M (12) - Medical
-                formData.totalSalary,       // N (13) - Total Salary (Calculated)
-                formData.year,              // O (14) - Year
-                formData.month,             // P (15) - Month
-                creationDate                // Q (16) - Creation Date (YYYY-MM-DD)
+                '',
+                formData.employeeId,
+                formData.employeeName,
+                formData.designation,
+                formData.joiningPlace,
+                formData.dateOfJoining,
+                formData.monthlySalary,
+                daysInMonth,
+                '0',
+                '0',
+                formData.advanceDeduction,
+                formData.brackage,
+                formData.medical,
+                formData.totalSalary,
+                formData.year,
+                formData.month,
+                creationDate
             ];
 
             const response = await fetch(PAYROLL_SCRIPT_URL, {
@@ -571,12 +517,12 @@ const Payroll = () => {
             if (result.success) {
                 toast.success("Payroll entry added successfully!");
                 setShowModal(false);
-                fetchPayrollData(); // Refresh table
-                // Reset form
-                setFormData(prev => ({
-                    ...prev,
+                fetchPayrollData();
+                setFormData({
                     employeeId: '',
                     employeeName: '',
+                    year: new Date().getFullYear().toString(),
+                    month: new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date()),
                     designation: '',
                     joiningPlace: '',
                     dateOfJoining: '',
@@ -586,7 +532,7 @@ const Payroll = () => {
                     medical: '0',
                     totalSalary: '0',
                     payDate: new Date().toISOString().split('T')[0]
-                }));
+                });
             } else {
                 toast.error(result.error || "Failed to add payroll entry");
             }
@@ -598,7 +544,6 @@ const Payroll = () => {
         }
     };
 
-    // --- Checkbox & Edit Handlers ---
     const handleCheckbox = (rowIndex, row) => {
         setSelectedRows(prev => {
             const next = new Set(prev);
@@ -618,7 +563,6 @@ const Payroll = () => {
             const updatedRow = [...(prev[rowIndex] || [])];
             updatedRow[cellIndex] = value;
 
-            // --- LIVE CALCULATION LOGIC ---
             if (headers && originalRow) {
                 const getIdx = (name) => headers.findIndex(h => h?.toString().toLowerCase().trim() === name.toLowerCase());
 
@@ -631,32 +575,24 @@ const Payroll = () => {
                 const advDedIdx = getIdx('Advance Deduction');
                 const totalSalIdx = getIdx('Total Salary');
 
-                // 1. Calculate Total Present dynamically
                 if (mgmtAdjIdx !== -1 && presentIdx !== -1) {
                     const origTotalPresent = Number(originalRow[presentIdx]) || 0;
                     const origMgmtAdj = Number(originalRow[mgmtAdjIdx]) || 0;
                     const basePresent = origTotalPresent - origMgmtAdj;
                     const newMgmtAdj = Number(updatedRow[mgmtAdjIdx]) || 0;
-
                     const newTotalPresent = basePresent + newMgmtAdj;
                     updatedRow[presentIdx] = newTotalPresent;
                 }
 
-                // 2. Calculate Total Salary dynamically
-                if (
-                    totalSalIdx !== -1 && monthSalIdx !== -1 && daysMonthIdx !== -1 &&
-                    presentIdx !== -1 && brackageIdx !== -1 && medicalIdx !== -1 && advDedIdx !== -1
-                ) {
+                if (totalSalIdx !== -1 && monthSalIdx !== -1 && daysMonthIdx !== -1 &&
+                    presentIdx !== -1 && brackageIdx !== -1 && medicalIdx !== -1 && advDedIdx !== -1) {
                     const monthlySalary = Number(updatedRow[monthSalIdx]) || 0;
                     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
                     const totalPresent = Number(updatedRow[presentIdx]) || 0;
                     const brackage = Number(updatedRow[brackageIdx]) || 0;
                     const medical = Number(updatedRow[medicalIdx]) || 0;
                     const advance = Number(updatedRow[advDedIdx]) || 0;
-
-                    // Always sync days in month correctly
                     updatedRow[daysMonthIdx] = daysInMonth;
-
                     const totalSalary = Math.ceil((monthlySalary / daysInMonth) * totalPresent) + brackage + medical - advance;
                     updatedRow[totalSalIdx] = totalSalary;
                 }
@@ -686,7 +622,6 @@ const Payroll = () => {
                 const originalDataRow = salaryData.rows[rowIndex] || [];
                 const originalDisplayRow = reorderRow(originalDataRow, originalHeaders);
 
-                // Resolve real sheet row by EMP ID + Month + Year (NOT by display position)
                 const empId = originalDataRow[empIdColIdx]?.toString().trim();
                 const month = originalDataRow[monthColIdx]?.toString().trim();
                 const year = originalDataRow[yearColIdx]?.toString().trim();
@@ -705,7 +640,7 @@ const Payroll = () => {
                         const originalColIndex = originalHeaders.indexOf(headerName);
                         if (originalColIndex !== -1) {
                             changedCells.push({
-                                colIndex: originalColIndex, // 0-based column index as in headers
+                                colIndex: originalColIndex,
                                 value: editedRow[j]
                             });
                         }
@@ -782,7 +717,6 @@ const Payroll = () => {
         try {
             const insertPromises = salaryData.rows.map(row => {
                 const rowToSubmit = [...row];
-                // Find New Payroll Date / Creation Date index and clear it for PAID Record
                 const newDateIdx = salaryData.headers.findIndex(h => h && (h.toString().toLowerCase().trim().includes('new payroll date') || h.toString().toLowerCase().trim() === 'creation date'));
                 if (newDateIdx !== -1) {
                     rowToSubmit[newDateIdx] = '';
@@ -817,9 +751,7 @@ const Payroll = () => {
         setIsSubmittingPayments(false);
     };
 
-
     const getReorderedHeaders = (headers) => {
-
         if (!headers) return [];
         const nameIdx = headers.indexOf('Name of the Employee');
         const yearIdx = headers.indexOf('Year');
@@ -829,11 +761,8 @@ const Payroll = () => {
 
         const newHeaders = [...headers];
         const year = newHeaders.splice(yearIdx, 1)[0];
-        // After removing Year, the month index might change if Year was before it
         const updatedMonthIdx = newHeaders.indexOf('Month');
         const month = newHeaders.splice(updatedMonthIdx, 1)[0];
-
-        // Find Name again in case index shifted
         const updatedNameIdx = newHeaders.indexOf('Name of the Employee');
         newHeaders.splice(updatedNameIdx + 1, 0, year, month);
         return newHeaders;
@@ -853,11 +782,9 @@ const Payroll = () => {
         tempHeadersForMonth.splice(yearIdx, 1);
         const updatedMonthIdx = tempHeadersForMonth.indexOf('Month');
         const month = newRow.splice(updatedMonthIdx, 1)[0];
-
         const tempHeadersForName = [...tempHeadersForMonth];
         tempHeadersForName.splice(updatedMonthIdx, 1);
         const updatedNameIdx = tempHeadersForName.indexOf('Name of the Employee');
-
         newRow.splice(updatedNameIdx + 1, 0, year, month);
         return newRow;
     };
@@ -871,65 +798,59 @@ const Payroll = () => {
         );
 
         return (
-            <div>
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                 {/* Update Toolbar */}
                 {isSalary && selectedRows.size > 0 && (
-                    <div className="flex items-center gap-3 mb-4 p-4 bg-white/80 backdrop-blur border border-blue-200 rounded-2xl animate-in slide-in-from-top duration-300 shadow-xl shadow-blue-900/5">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600">
-                            <Edit2 size={16} className="ml-0.5" />
+                    <div className="flex items-center gap-3 p-4 bg-indigo-50 border-b border-indigo-100">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-600">
+                            <Edit2 size={16} />
                         </div>
-                        <span className="text-sm font-semibold text-blue-800">{selectedRows.size} row(s) selected for editing</span>
+                        <span className="text-sm font-medium text-indigo-800">{selectedRows.size} row(s) selected</span>
                         <button
                             onClick={handleUpdate}
                             disabled={isUpdating}
-                            className="ml-auto flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all active:scale-95 disabled:opacity-50"
+                            className="ml-auto flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                         >
                             {isUpdating ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                             {isUpdating ? 'Updating...' : 'Update Records'}
                         </button>
                         <button
                             onClick={() => { setSelectedRows(new Set()); setEditingData({}); }}
-                            className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-800 rounded-xl transition-all"
+                            className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                         >
                             Cancel
                         </button>
                     </div>
                 )}
 
-                <div className="overflow-auto max-h-[600px] bg-white ring-1 ring-slate-200 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-                    <table className="min-w-full divide-y divide-slate-100 border-separate border-spacing-0">
-                        <thead className="bg-slate-50/90 backdrop-blur-md sticky top-0 z-20">
+                <div className="overflow-x-auto h-[75vh]">
+                    <table className="w-full text-sm ">
+                        <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                             <tr>
-                                {/* Action Column Header */}
                                 {isSalary && (
-                                    <th className="px-5 py-4 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-100 sticky top-0 z-20 w-12 bg-slate-50/90 backdrop-blur-md">
-                                        Action
-                                    </th>
+                                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs w-12">Select</th>
                                 )}
                                 {headers.map((header, i) => (
-                                    <th key={i} className="px-6 py-4 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-100 sticky top-0 z-20 bg-slate-50/90 backdrop-blur-md whitespace-nowrap">
+                                    <th key={i} className="text-left px-4 py-3 font-medium text-gray-600 text-xs whitespace-nowrap">
                                         {header}
                                     </th>
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-slate-50">
+                        <tbody className="divide-y divide-gray-100">
                             {filteredRows.map((row, i) => {
                                 const displayRow = isSalary ? reorderRow(row, data.headers) : row;
                                 const isSelected = selectedRows.has(i);
                                 return (
-                                    <tr key={i} className={`transition-all duration-300 group ${isSelected ? 'bg-blue-50/40 relative' : 'hover:bg-slate-50/80'} `}>
-                                        {/* Checkbox Cell */}
+                                    <tr key={i} className={`hover:bg-gray-50 transition-colors ${isSelected ? 'bg-indigo-50' : ''}`}>
                                         {isSalary && (
-                                            <td className={`px-5 py-3 text-center whitespace-nowrap border-l-4 transition-colors ${isSelected ? 'border-blue-500' : 'border-transparent group-hover:border-slate-200'}`}>
-                                                <div className="inline-flex items-center justify-center p-1 rounded-full hover:bg-white transition-colors">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isSelected}
-                                                        onChange={() => handleCheckbox(i, displayRow)}
-                                                        className="w-4 h-4 accent-blue-600 rounded-md cursor-pointer transition-transform hover:scale-110"
-                                                    />
-                                                </div>
+                                            <td className="px-4 py-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => handleCheckbox(i, displayRow)}
+                                                    className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                                                />
                                             </td>
                                         )}
                                         {displayRow.map((cell, j) => {
@@ -943,8 +864,8 @@ const Payroll = () => {
                                             const isDesig = header === 'designation';
                                             const isLoc = header === 'location' || header === 'store name';
                                             const isPresent = header === 'total present';
+                                            const isTotalSalary = header === 'total salary';
 
-                                            // Disable deduction fields when they are empty/null in backend
                                             const isAdvance = header === 'advance deduction';
                                             const isBreakage = header === 'brackage' || header === 'brackege' || header === 'breakage';
                                             const isMedical = header === 'medical' || header === 'medicle';
@@ -964,21 +885,30 @@ const Payroll = () => {
                                                 if (isDateColumn) inputValue = formatDate(inputValue);
 
                                                 return (
-                                                    <td key={j} className="px-2 py-2 whitespace-nowrap">
+                                                    <td key={j} className="px-4 py-3">
                                                         <input
                                                             type="text"
                                                             value={inputValue}
                                                             onChange={(e) => handleCellEdit(i, j, e.target.value, headers, displayRow)}
                                                             disabled={isDisabled}
-                                                            className={`w-full min-w-[80px] px-3 py-1.5 border-2 rounded-xl text-sm font-medium transition-all outline-none ${isDisabled ? 'bg-slate-100 text-slate-400 border-transparent cursor-not-allowed' : 'bg-white text-slate-800 border-blue-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 shadow-sm'}`}
+                                                            className={`w-full min-w-[80px] px-2 py-1 border rounded text-sm transition-colors ${isDisabled ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'}`}
                                                         />
                                                     </td>
                                                 );
                                             }
 
+                                            let cellClassName = "px-4 py-3 text-sm ";
+                                            if (isTotalSalary) {
+                                                cellClassName += "font-semibold text-green-600";
+                                            } else if (isPresent) {
+                                                cellClassName += "font-medium text-blue-600";
+                                            } else {
+                                                cellClassName += "text-gray-700";
+                                            }
+
                                             return (
-                                                <td key={j} className={`px-6 py-4 whitespace-nowrap text-sm ${isSno ? 'font-medium text-slate-400' : 'font-medium text-slate-700'}`}>
-                                                    {displayCell}
+                                                <td key={j} className={cellClassName}>
+                                                    {isTotalSalary && displayCell ? `₹${parseFloat(displayCell).toLocaleString()}` : displayCell}
                                                 </td>
                                             );
                                         })}
@@ -992,27 +922,33 @@ const Payroll = () => {
         );
     };
 
-
     return (
-        <div className="p-6 md:p-8 space-y-8 bg-gradient-to-br from-slate-50 to-blue-50/30 min-h-screen font-sans w-[83vw]">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-700 tracking-tight">
-                    Payroll Management
-                </h1>
-                <div className="flex flex-col md:flex-row md:items-center gap-4 w-full md:w-auto">
-                    <div className="relative w-full md:w-80 h-11">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        <div className="p-10 pt-5 w-[84vw]">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-6">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                        <DollarSign size={28} />
+                        Payroll Management
+                    </h1>
+                    <p className="text-gray-500 text-sm mt-1">
+                        Manage employee salaries, deductions, and payment history
+                    </p>
+                </div>
+                <div className="flex gap-3">
+                    <div className="relative">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Search payroll records..."
-                            className="w-full h-full pl-11 pr-4 bg-white shadow-sm border border-slate-200 rounded-full focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400"
+                            placeholder="Search records..."
+                            className="pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 w-64"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
                     <button
                         onClick={() => setShowModal(true)}
-                        className="flex items-center justify-center gap-2 h-11 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full hover:shadow-lg hover:shadow-blue-500/30 transition-all font-semibold active:scale-95"
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                     >
                         <Plus size={18} />
                         New Payroll
@@ -1021,7 +957,7 @@ const Payroll = () => {
                         <button
                             onClick={handleSubmitPayments}
                             disabled={isSubmittingPayments || !salaryData?.rows?.length}
-                            className="flex items-center justify-center gap-2 h-11 px-6 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-full hover:shadow-lg hover:shadow-emerald-500/30 transition-all font-semibold active:scale-95 disabled:opacity-50 disabled:hover:shadow-none"
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                         >
                             {isSubmittingPayments ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                             {isSubmittingPayments ? 'Submitting...' : 'Submit Payments'}
@@ -1030,293 +966,325 @@ const Payroll = () => {
                 </div>
             </div>
 
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div className="flex bg-slate-200/60 backdrop-blur-md p-1 rounded-full shadow-inner w-full md:w-auto">
-                    <button
-                        className={`flex-1 md:flex-none px-6 py-2.5 text-sm font-semibold rounded-full transition-all duration-300 ${activeTab === 'salary' ? 'bg-white text-blue-700 shadow-md' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
-                        onClick={() => setActiveTab('salary')}
-                    >
-                        Salary Sheet
-                    </button>
-                    <button
-                        className={`flex-1 md:flex-none px-6 py-2.5 text-sm font-semibold rounded-full transition-all duration-300 ${activeTab === 'history' ? 'bg-white text-blue-700 shadow-md' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
-                        onClick={() => setActiveTab('history')}
-                    >
-                        History
-                    </button>
-                </div>
-
-                {activeTab === 'salary' && (
-                    <div className="flex items-center gap-3 bg-white px-4 py-2 border border-slate-200 rounded-full shadow-sm">
-                        <div className="flex items-center gap-2">
-                            <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Month</label>
-                            <select
-                                value={selectedMonth}
-                                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                                className="px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-transparent rounded-md text-sm font-bold text-slate-700 outline-none transition-colors cursor-pointer"
-                            >
-                                {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((m, idx) => (
-                                    <option key={m} value={idx + 1}>{m}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="w-px h-5 bg-slate-200 mx-1"></div>
-                        <div className="flex items-center gap-2">
-                            <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Year</label>
-                            <select
-                                value={selectedYear}
-                                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                                className="px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-transparent rounded-md text-sm font-bold text-slate-700 outline-none transition-colors cursor-pointer"
-                            >
-                                {[2024, 2025, 2026].map(y => (
-                                    <option key={y} value={y}>{y}</option>
-                                ))}
-                            </select>
+            {/* Summary Stats Cards - Only for Salary Tab */}
+            {activeTab === 'salary' && !loading && salaryData.rows?.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-gray-500">Total Employees</p>
+                                <p className="text-2xl font-bold text-gray-900 mt-1">{totalEmployees}</p>
+                            </div>
+                            <div className="p-2 bg-indigo-50 rounded-lg">
+                                <Users size={20} className="text-indigo-600" />
+                            </div>
                         </div>
                     </div>
-                )}
+
+                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-gray-500">Total Salary Amount</p>
+                                <p className="text-2xl font-bold text-green-600 mt-1">₹{totalSalaryAmount.toLocaleString()}</p>
+                            </div>
+                            <div className="p-2 bg-green-50 rounded-lg">
+                                <DollarSign size={20} className="text-green-600" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-gray-500">Month</p>
+                                <p className="text-xl font-bold text-gray-900 mt-1">
+                                    {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][selectedMonth - 1]}
+                                </p>
+                            </div>
+                            <div className="p-2 bg-blue-50 rounded-lg">
+                                <Calendar size={20} className="text-blue-600" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-gray-500">Year</p>
+                                <p className="text-2xl font-bold text-gray-900 mt-1">{selectedYear}</p>
+                            </div>
+                            <div className="p-2 bg-purple-50 rounded-lg">
+                                <TrendingUp size={20} className="text-purple-600" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Tab Navigation */}
+            <div className="flex gap-2 border-b border-gray-200 mb-6">
+                <button
+                    className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'salary'
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                    onClick={() => setActiveTab('salary')}
+                >
+                    Salary Sheet
+                </button>
+                <button
+                    className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'history'
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                    onClick={() => setActiveTab('history')}
+                >
+                    Payment History
+                </button>
             </div>
 
+            {/* Month/Year Filters for Salary Tab */}
+            {activeTab === 'salary' && (
+                <div className="flex gap-4 mb-6">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Month</label>
+                        <select
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                            {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((m, idx) => (
+                                <option key={m} value={idx + 1}>{m}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Year</label>
+                        <select
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                            {[2024, 2025, 2026].map(y => (
+                                <option key={y} value={y}>{y}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            )}
+
+            {/* Content */}
             {loading ? (
-                <div className="flex flex-col items-center justify-center py-24 space-y-4">
-                    <Loader2 className="animate-spin text-blue-600" size={44} />
-                    <p className="text-slate-500 animate-pulse font-medium">Fetching payroll records...</p>
+                <div className="flex items-center justify-center py-12">
+                    <div className="flex items-center gap-2 text-gray-500">
+                        <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                        Loading payroll data...
+                    </div>
                 </div>
             ) : error ? (
-                <div className="p-6 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-center shadow-sm">
-                    <p className="font-semibold">{error}</p>
-                    <button onClick={() => activeTab === 'salary' ? fetchPayrollData() : fetchHistoryData()} className="mt-2 text-sm font-bold underline hover:text-red-700">Try Again</button>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                    <p className="text-red-600 mb-3">{error}</p>
+                    <button
+                        onClick={() => activeTab === 'salary' ? fetchPayrollData() : fetchHistoryData()}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                    >
+                        Retry
+                    </button>
                 </div>
             ) : (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div>
                     {activeTab === 'salary' ? renderTable(salaryData, true) : renderTable(historyData, false)}
                     {((activeTab === 'salary' && salaryData.rows?.length === 0) || (activeTab === 'history' && historyData.rows?.length === 0)) && !loading && (
-                        <div className="text-center py-24 bg-white/50 border border-slate-200 border-dashed rounded-2xl flex flex-col items-center">
-                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-3">
-                                <Search className="text-slate-300" size={24} />
+                        <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex flex-col items-center justify-center text-gray-400">
+                                <Search size={48} className="mb-3" />
+                                <p className="font-medium">No records found</p>
+                                <p className="text-xs mt-1">Try adjusting your filters</p>
                             </div>
-                            <p className="text-slate-400 font-medium tracking-wide">No records found for the selected period.</p>
                         </div>
                     )}
                 </div>
             )}
 
+            {/* Add Payroll Modal */}
             {showModal && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white/95 backdrop-blur-2xl border border-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-                        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-white/50">
-                            <h3 className="text-lg font-bold text-gray-800">Add New Payroll Entry</h3>
-                            <button
-                                onClick={() => setShowModal(false)}
-                                className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
-                            >
-                                <X size={18} className="text-gray-500" />
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
+                    <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
+                            <h2 className="text-lg font-semibold">Add New Payroll Entry</h2>
+                            <button onClick={() => setShowModal(false)} className="p-1 hover:bg-gray-100 rounded">
+                                <X size={18} />
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="p-5 md:p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto px-2 py-1 custom-scrollbar">
-                                {/* Employee ID & Name */}
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Employee ID</label>
-                                    <input
-                                        type="text"
-                                        name="employeeId"
-                                        value={formData.employeeId}
-                                        readOnly
-                                        className="w-full px-3 py-2.5 bg-slate-100/50 border border-transparent rounded-xl text-sm text-slate-500 font-medium cursor-not-allowed focus:outline-none"
-                                        placeholder="Auto-filled"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Employee Name</label>
-                                    <select
-                                        name="employeeName"
-                                        value={formData.employeeName}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium text-slate-700"
-                                        required
-                                    >
-                                        <option value="">Select Employee</option>
-                                        {employees.map((emp, i) => (
-                                            <option key={i} value={emp.name}>{emp.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                        <form onSubmit={handleSubmit}>
+                            <div className="p-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Employee Name</label>
+                                        <select
+                                            name="employeeName"
+                                            value={formData.employeeName}
+                                            onChange={handleInputChange}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            required
+                                        >
+                                            <option value="">Select Employee</option>
+                                            {employees.map((emp, i) => (
+                                                <option key={i} value={emp.name}>{emp.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
 
-                                {/* Year & Month */}
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Year</label>
-                                    <input
-                                        type="text"
-                                        name="year"
-                                        value={formData.year}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Month</label>
-                                    <select
-                                        name="month"
-                                        value={formData.month}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium"
-                                    >
-                                        {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(m => (
-                                            <option key={m} value={m}>{m}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
+                                        <input
+                                            type="text"
+                                            name="employeeId"
+                                            value={formData.employeeId}
+                                            readOnly
+                                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500"
+                                            placeholder="Auto-filled"
+                                        />
+                                    </div>
 
-                                {/* Joining Details (Auto-filled but Editable) */}
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Designation</label>
-                                    <input
-                                        type="text"
-                                        name="designation"
-                                        value={formData.designation}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium"
-                                        placeholder="Enter Designation"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Joining Place</label>
-                                    <input
-                                        type="text"
-                                        name="joiningPlace"
-                                        value={formData.joiningPlace}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium"
-                                        placeholder="Enter Location"
-                                    />
-                                </div>
-                                <div className="space-y-1.5 col-span-2">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Date Of Joining</label>
-                                    <div className="relative group">
-                                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                                        <input
+                                            type="text"
+                                            name="year"
+                                            value={formData.year}
+                                            onChange={handleInputChange}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
+                                        <select
+                                            name="month"
+                                            value={formData.month}
+                                            onChange={handleInputChange}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        >
+                                            {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(m => (
+                                                <option key={m} value={m}>{m}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
+                                        <input
+                                            type="text"
+                                            name="designation"
+                                            value={formData.designation}
+                                            onChange={handleInputChange}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Joining Place</label>
+                                        <input
+                                            type="text"
+                                            name="joiningPlace"
+                                            value={formData.joiningPlace}
+                                            onChange={handleInputChange}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        />
+                                    </div>
+
+                                    <div className="col-span-2">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Date of Joining</label>
                                         <input
                                             type="text"
                                             name="dateOfJoining"
                                             value={formData.dateOfJoining}
                                             onChange={handleInputChange}
-                                            className="w-full pl-9 pr-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                             placeholder="YYYY-MM-DD"
                                         />
                                     </div>
-                                </div>
 
-                                {/* Monthly Salary & Advance Deduction */}
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Monthly Salary</label>
-                                    <input
-                                        type="number"
-                                        name="monthlySalary"
-                                        value={formData.monthlySalary}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Advance Deduction</label>
-                                    <input
-                                        type="number"
-                                        name="advanceDeduction"
-                                        value={formData.advanceDeduction}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium"
-                                    />
-                                </div>
-
-                                {/* Brackage & Medical */}
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Brackage</label>
-                                    <input
-                                        type="number"
-                                        name="brackage"
-                                        value={formData.brackage}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Medical</label>
-                                    <input
-                                        type="number"
-                                        name="medical"
-                                        value={formData.medical}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium"
-                                    />
-                                </div>
-
-                                {/* Pay Date */}
-                                <div className="space-y-1.5 col-span-2">
-                                    <label className="text-xs font-semibold text-slate-700 ml-1">Pay Date</label>
-                                    <div className="relative group">
-                                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Salary</label>
                                         <input
-                                            type="date"
-                                            name="payDate"
-                                            value={formData.payDate}
+                                            type="number"
+                                            name="monthlySalary"
+                                            value={formData.monthlySalary}
                                             onChange={handleInputChange}
-                                            className="w-full pl-9 pr-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm font-medium"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                         />
                                     </div>
-                                </div>
-                            </div>
 
-                            {/* Total Salary Box (Highlighted before Buttons - Premium Theme) */}
-                            <div className="mt-6 relative overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-900 border border-white/10 rounded-2xl shadow-xl shadow-blue-900/20">
-                                <div className="absolute top-0 right-0 p-12 bg-blue-500/10 blur-3xl rounded-full"></div>
-                                <div className="absolute bottom-0 left-0 p-12 bg-indigo-500/10 blur-3xl rounded-full"></div>
-                                <div className="relative p-4 px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-                                    <div className="space-y-0.5 z-10 text-center md:text-left">
-                                        <label className="text-xs font-bold text-blue-200 uppercase tracking-widest">Total Salary</label>
-                                        <p className="text-slate-400 text-xs">Net payable after all deductions</p>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Advance Deduction</label>
+                                        <input
+                                            type="number"
+                                            name="advanceDeduction"
+                                            value={formData.advanceDeduction}
+                                            onChange={handleInputChange}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        />
                                     </div>
-                                    <div className="relative group z-10">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-bold text-blue-300">₹</span>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Brackage</label>
+                                        <input
+                                            type="number"
+                                            name="brackage"
+                                            value={formData.brackage}
+                                            onChange={handleInputChange}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Medical</label>
+                                        <input
+                                            type="number"
+                                            name="medical"
+                                            value={formData.medical}
+                                            onChange={handleInputChange}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        />
+                                    </div>
+
+                                    <div className="col-span-2">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Total Salary</label>
                                         <input
                                             type="text"
                                             name="totalSalary"
                                             value={formData.totalSalary}
                                             readOnly
-                                            className="w-48 pl-10 pr-4 py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl text-2xl font-black text-white shadow-inner outline-none transition-all text-right"
+                                            className="w-full px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm font-semibold text-green-700"
                                         />
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="flex flex-col md:flex-row justify-end gap-3 mt-6 pt-4 border-t border-slate-100 font-medium">
+                            <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 sticky bottom-0">
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(false)}
-                                    className="px-6 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="px-8 py-2 text-sm bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:shadow-blue-500/30 transition-all font-semibold active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
                                 >
-                                    {isSubmitting ? (
-                                        <>
-                                            <Loader2 size={16} className="animate-spin" />
-                                            Submitting...
-                                        </>
-                                    ) : (
-                                        'Submit Entry'
-                                    )}
+                                    {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                                    {isSubmitting ? 'Submitting...' : 'Submit Entry'}
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
-
         </div>
     );
 };

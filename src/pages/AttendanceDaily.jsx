@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Download, Calendar, Loader2, CheckCircle, X, Clock, Pencil } from 'lucide-react';
+import { Search, Download, Calendar, Loader2, CheckCircle, X, Clock, Pencil, Filter, Users, User, Clock as ClockIcon, TrendingUp, Database } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const DEVICES = [
@@ -10,7 +10,6 @@ const DEVICES = [
   { name: 'AKOLE', apiName: 'AKOLE', serial: 'C262CC13CF202038' },
   { name: 'MUMBAI', apiName: 'MUMBAI', serial: 'C2630450C32A2327' }
 ];
-
 
 const JOINING_API_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch';
 
@@ -34,8 +33,6 @@ const AttendanceDaily = () => {
   const [tempInTime, setTempInTime] = useState('');
   const [tempOutTime, setTempOutTime] = useState('');
 
-
-
   const formatTime12h = (dateStr) => {
     if (!dateStr || dateStr === '-') return '-';
     try {
@@ -43,7 +40,6 @@ const AttendanceDaily = () => {
       let timePart = parts[1] || parts[0];
       if (!timePart) return dateStr;
 
-      // Check if already in 12h format or has AM/PM
       const hasAMPM = timePart.toLowerCase().includes('am') || timePart.toLowerCase().includes('pm');
       if (hasAMPM && !dateStr.includes('-')) {
         return timePart.toUpperCase();
@@ -53,7 +49,7 @@ const AttendanceDaily = () => {
 
       let [hoursPart, minutesFull] = timePart.split(':');
       let hours = parseInt(hoursPart);
-      let minutes = minutesFull ? minutesFull.slice(0, 2) : '00'; // Take only first 2 digits
+      let minutes = minutesFull ? minutesFull.slice(0, 2) : '00';
 
       const isPM = timePart.toLowerCase().includes('pm') || hours >= 12;
       const ampm = isPM ? 'PM' : 'AM';
@@ -80,13 +76,11 @@ const AttendanceDaily = () => {
       const parse = (s) => {
         if (!s || s === '-') return null;
         try {
-          // 1. Try full date string first
           if (s.includes('-') && s.includes(':')) {
             const d = new Date(s.replace(/-/g, '/'));
             if (!isNaN(d.getTime())) return d;
           }
 
-          // 2. Manual robust parsing for time-only strings (e.g. "7:00PM", "11:04 AM")
           let cleanTime = s.trim().toUpperCase();
           const isPM = cleanTime.includes('PM');
           const isAM = cleanTime.includes('AM');
@@ -100,7 +94,6 @@ const AttendanceDaily = () => {
           if (isPM && h < 12) h += 12;
           if (isAM && h === 12) h = 0;
 
-          // Use provided dateContext or current date
           const baseDate = dateContext ? new Date(dateContext.replace(/-/g, '/')) : new Date();
           baseDate.setHours(h, m, sec, 0);
           return baseDate;
@@ -177,8 +170,8 @@ const AttendanceDaily = () => {
       const minutes = inDate.getMinutes();
       const totalMinutes = hours * 60 + minutes;
 
-      const officialStartTime = 10 * 60 + 0; // 10:00 AM
-      const graceTimeThreshold = 10 * 60 + 10; // 10:10 AM
+      const officialStartTime = 10 * 60 + 0;
+      const graceTimeThreshold = 10 * 60 + 10;
 
       if (totalMinutes > graceTimeThreshold) {
         return totalMinutes - officialStartTime;
@@ -199,7 +192,7 @@ const AttendanceDaily = () => {
 
     let successCount = 0;
     let failCount = 0;
-    const batchSize = 5; // Sync 5 records at a time for speed
+    const batchSize = 5;
 
     for (let i = 0; i < data.length; i += batchSize) {
       const batch = data.slice(i, i + batchSize);
@@ -214,7 +207,6 @@ const AttendanceDaily = () => {
           item.WorkingHour || '-',
           item.StoreName || '-'
         ];
-
 
         try {
           const response = await fetch(SCRIPT_URL, {
@@ -257,13 +249,12 @@ const AttendanceDaily = () => {
     setTempOutTime('');
   };
 
-  const handleSaveEdit = async (item, index) => {
+  const handleSaveEdit = async (item) => {
     setLoading(true);
     try {
       const newInTime = tempInTime || item.InTime;
       const newOutTime = tempOutTime || item.OutTime;
 
-      // Recalculate values for the edited row with date context
       const newLateMins = calculateLateMinutes(newInTime, item.Date);
       const newWorkHrs = calculateWorkHours(newInTime, newOutTime, item.Date);
       const newOvertimeHrs = calculateOvertime(newWorkHrs);
@@ -283,7 +274,6 @@ const AttendanceDaily = () => {
         Status: newLateMins > 0 ? 'Late' : 'Present'
       };
 
-      // Update local state
       const newData = [...attendanceData];
       const dataIndex = attendanceData.findIndex(d => d.EmployeeID === item.EmployeeID && d.Date === item.Date);
       if (dataIndex !== -1) {
@@ -291,7 +281,6 @@ const AttendanceDaily = () => {
         setAttendanceData(newData);
       }
 
-      // Sync to machine/database (Google Sheet)
       const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz009j6fH3ADRbVJYJGt2QnXu6si3isPR3CHvtv06W7DOEret6CEiJWc_PbDcKY5SSs/exec';
       const SPECIFIED_SPREADSHEET_ID = '1lg8cvRaYHpnR75bWxHoh-a30-gGL94-_WAnE7Zue6r8';
 
@@ -303,7 +292,7 @@ const AttendanceDaily = () => {
         formatTime12h(updatedItem.OutTime),
         updatedItem.WorkingHour,
         updatedItem.StoreName,
-        'MANUAL_EDIT' // Identifier
+        'MANUAL_EDIT'
       ];
 
       await fetch(SCRIPT_URL, {
@@ -312,27 +301,26 @@ const AttendanceDaily = () => {
         body: new URLSearchParams({
           sheetName: 'Formatted_Attendance',
           spreadsheetId: SPECIFIED_SPREADSHEET_ID,
-          action: 'insert', // Re-inserting for now as current backend logic might handle deduplication or auditing
+          action: 'insert',
           rowData: JSON.stringify(rowData)
         })
       });
 
       setEditingId(null);
+      alert('Attendance updated successfully!');
     } catch (err) {
       console.error('Save failed:', err);
+      alert('Error saving changes');
     } finally {
       setLoading(false);
     }
   };
-
-
 
   const fetchDeviceLogs = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // 1. Fetch Joining Data if not already loaded
       let currentJoining = joiningData;
       if (joiningData.length === 0) {
         const jResponse = await fetch(JOINING_API_URL);
@@ -358,13 +346,12 @@ const AttendanceDaily = () => {
         }
       }
 
-      // 1b. Fetch Device User Mapping from MASTER sheet (HR FMS V.1)
       const MASTER_MAP_URL = `https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=MASTER&action=fetch`;
       const dmResponse = await fetch(MASTER_MAP_URL);
       const dmResult = await dmResponse.json();
       let currentMapping = [];
       if (dmResult.success) {
-        const rows = dmResult.data.slice(1); // Skip headers
+        const rows = dmResult.data.slice(1);
         currentMapping = rows.map(r => ({
           userId: r[5]?.toString().trim(),
           name: r[6]?.toString().trim(),
@@ -375,7 +362,6 @@ const AttendanceDaily = () => {
         setDeviceMapping(currentMapping);
       }
 
-      // 2. Fetch Device Logs
       const queryStart = startDate || '2026-04-01';
       const queryEnd = endDate || '2026-04-30';
 
@@ -389,7 +375,6 @@ const AttendanceDaily = () => {
               const res = await fetch(url);
               if (!res.ok) return [];
               const logs = await res.json();
-              // Inject Device Name for identification
               return Array.isArray(logs) ? logs.map(l => ({ ...l, _DeviceName: device.name })) : [];
             } catch (e) {
               console.error(`Error fetching for ${device.name}:`, e);
@@ -411,8 +396,6 @@ const AttendanceDaily = () => {
         return;
       }
 
-
-      // Strict filter for records from April 1st, 2026 onwards
       const filteredLogs = rawLogs.filter(log => {
         if (!log.LogDate) return false;
         const logDateStr = log.LogDate.split(' ')[0];
@@ -432,12 +415,11 @@ const AttendanceDaily = () => {
             EmployeeCode: log.EmployeeCode.toString().trim(),
             Date: dateStr,
             SerialNumber: log.SerialNumber,
-            SourceDeviceName: log._DeviceName, // Store the source device
+            SourceDeviceName: log._DeviceName,
             logs: []
           };
         }
         grouped[key].logs.push(log.LogDate);
-
       });
 
       const aggregatedData = Object.values(grouped).map(group => {
@@ -455,7 +437,7 @@ const AttendanceDaily = () => {
           const hours = parseInt(timePart.split(':')[0]) || 0;
 
           punchMiss = 'Yes';
-          if (hours >= 15) { // 3:00 PM cutoff for evening punch
+          if (hours >= 15) {
             outTime = punchTime;
             punchMissMsg = 'Morning Punch Miss';
           } else {
@@ -477,17 +459,13 @@ const AttendanceDaily = () => {
         const code = group.EmployeeCode.toString().trim();
         const isNumeric = !isNaN(code) && code !== '';
 
-        // Fallback to Joining Meta (Original Source)
         const empMeta = currentJoining.find(e =>
           (e.id && e.id.toLowerCase() === code.toLowerCase()) ||
           (e.name && e.name.toLowerCase() === code.toLowerCase())
         );
 
-        // Flexible Mapping: Find in MASTER mapping
-        // Priority 1: Match by UserId (Employee Code)
         let dMap = currentMapping.find(m => m.userId && m.userId.toString().toLowerCase() === code.toLowerCase());
 
-        // Priority 2: Match by Name if UserId didn't match (for some "Unknown" cases where code is actually a name)
         if (!dMap) {
           const entryName = (empMeta?.name || code).toString().trim().toLowerCase();
           dMap = currentMapping.find(m => m.name && m.name.toString().toLowerCase() === entryName);
@@ -499,13 +477,10 @@ const AttendanceDaily = () => {
         const displayDeviceId = dMap ? dMap.deviceId : '-';
         const displayAssignedSerial = dMap ? dMap.serialNo : serial;
 
-
         const lateMins = calculateLateMinutes(inTime);
         const workHrs = punchMiss === 'Yes' ? '0h 0m' : calculateWorkHours(inTime, outTime);
         const overtimeHrs = calculateOvertime(workHrs);
 
-        // LUNCH & WASTE TIME LOGIC
-        // Actual lunch time is the sum of all gaps between middle punches
         let actualLunchMs = 0;
         if (logs.length > 2) {
           for (let i = 1; i < logs.length - 1; i += 2) {
@@ -515,7 +490,6 @@ const AttendanceDaily = () => {
           }
         }
 
-        // Standard lunch = 2 hours 30 mins = 9000 seconds
         const standardLunchMs = 2.5 * 3600 * 1000;
         const wasteTimeMs = Math.max(0, actualLunchMs - standardLunchMs);
         const displayLunchMs = Math.min(actualLunchMs, standardLunchMs);
@@ -527,14 +501,11 @@ const AttendanceDaily = () => {
         let status = 'Present';
         if (lateMins > 0) status = 'Late';
 
-        // Full Punch Log (All recorded times for this day)
         const punchLogStr = logs.map(l => formatTime12h(l)).join(' | ');
 
-        // PUNCH LOG STATUS LOGIC
         let punchLogStatus = 'Bahar';
         if (logs.length > 0) {
           if (logs.length % 2 === 1) {
-            // Odd number of punches
             if (logs.length === 1) {
               const punchTime = logs[0];
               const timePart = punchTime.split(' ')[1] || '';
@@ -544,7 +515,6 @@ const AttendanceDaily = () => {
               punchLogStatus = 'Andar';
             }
           } else {
-            // Even number of punches
             punchLogStatus = 'Bahar';
           }
         }
@@ -556,15 +526,15 @@ const AttendanceDaily = () => {
           Day: dayName,
           IsWorkingDay: isWorkingDay,
           InTime: inTime,
-          StandardLunch: calculateHoursMins(displayLunchMs), // Shows actual lunch time up to 2:30
+          StandardLunch: calculateHoursMins(displayLunchMs),
           WasteTime: calculateHoursMins(wasteTimeMs),
           OutTime: outTime,
-          PunchLog: punchLogStr, // NEW: Full list of punches
+          PunchLog: punchLogStr,
           PunchLogStatus: punchLogStatus,
           StoreName: displayStore,
           DeviceID: displayDeviceId,
           Designation: empMeta ? empMeta.designation : '-',
-          SerialNumber: serial, // Actual punch serial
+          SerialNumber: serial,
           AssignedSerial: displayAssignedSerial,
           Status: status,
           WorkingHour: workHrs,
@@ -578,7 +548,6 @@ const AttendanceDaily = () => {
       aggregatedData.sort((a, b) => new Date(b.InTime) - new Date(a.InTime));
       setAttendanceData(aggregatedData);
 
-      // Process individual log entries for the "Attendance Log" table
       const processedRawLogs = filteredLogs.map(log => {
         const code = log.EmployeeCode.toString().trim();
         const empMeta = currentJoining.find(e =>
@@ -614,10 +583,8 @@ const AttendanceDaily = () => {
 
       setRawLogs(processedRawLogs);
 
-      // Automatic background sync to Google Sheet
       syncToMachineDataSheet(aggregatedData);
     } catch (error) {
-
       console.error('Error fetching data:', error);
       setError(error.message);
     } finally {
@@ -662,11 +629,10 @@ const AttendanceDaily = () => {
       'Employee Name': item.EmployeeName,
       'Designation': item.Designation,
       'IN Time': formatTime12h(item.InTime),
-
       'Lunch Time': item.StandardLunch,
-      'Wast Time': item.WasteTime,
+      'Waste Time': item.WasteTime,
       'OUT Time': formatTime12h(item.OutTime),
-      'Punch Logs': item.PunchLog, // Included in Export
+      'Punch Logs': item.PunchLog,
       'Punch Log Status': item.PunchLogStatus,
       'Status': item.Status,
       'Working Hour': item.WorkingHour,
@@ -683,81 +649,98 @@ const AttendanceDaily = () => {
     XLSX.writeFile(workbook, `device_logs_${startDate || 'all'}_to_${endDate || 'all'}.xlsx`);
   };
 
+  // Summary stats
+  const totalEmployees = new Set(attendanceData.map(d => d.EmployeeID)).size;
+  const totalPresent = attendanceData.filter(d => d.Status === 'Present').length;
+  const totalLate = attendanceData.filter(d => d.Status === 'Late').length;
+
   return (
-    <div className="space-y-6  p-6 w-[75vw]">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Daily Device Logs</h1>
-        <div className="flex items-center space-x-4">
+    <div className="p-5  pt-2">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <Clock size={28} />
+            Daily Attendance
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            Track and manage daily employee attendance logs
+          </p>
+        </div>
+        <div className="flex gap-3">
           {syncing && (
-            <div className="flex items-center bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 animate-pulse">
-              <Loader2 size={16} className="text-indigo-600 animate-spin mr-2" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">
-                Syncing to Sheet... {syncProgress}%
+            <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg">
+              <Loader2 size={14} className="text-indigo-600 animate-spin" />
+              <span className="text-xs text-indigo-600 font-medium">
+                Syncing... {syncProgress}%
               </span>
             </div>
           )}
           <button
             onClick={downloadExcel}
             disabled={filteredData.length === 0}
-            className={`flex items-center px-4 py-2 rounded-lg text-white transition-all shadow-md group ${filteredData.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium text-sm transition-colors ${filteredData.length === 0
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-green-600 hover:bg-green-700'
+              }`}
           >
-            <Download size={20} className="mr-2 group-hover:scale-110 transition-transform" />
-            Download Excel
+            <Download size={16} />
+            Export Excel
           </button>
         </div>
       </div>
 
-
-      <div className="bg-white p-5 rounded-xl shadow-lg border border-gray-100 flex flex-col md:row gap-6 items-end">
-        <div className="flex-1 w-full text-gray-700">
-          <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Search Logs</label>
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search by Employee ID, Name or Serial Number..."
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner text-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <Search size={18} className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400" />
+      {/* Filter Section */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Search Employee</label>
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by name, ID or serial..."
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
-        </div>
 
-        <div className="flex flex-col sm:flex-row gap-6 w-full md:w-auto text-gray-700">
-          <div className="flex-1 md:w-52">
-            <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Device Name</label>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Select Device</label>
             <div className="relative">
               <select
-                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all appearance-none cursor-pointer"
                 value={selectedDevice.name}
                 onChange={(e) => {
                   const device = DEVICES.find(d => d.name === e.target.value);
                   setSelectedDevice(device);
                 }}
+                className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white"
               >
                 {DEVICES.map(d => (
-                  <option key={d.name} value={d.name} className="font-medium text-gray-700">{d.name}</option>
+                  <option key={d.name} value={d.name}>{d.name}</option>
                 ))}
               </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500">
-                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
-              </div>
+              <Filter size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
           </div>
-          <div className="flex-1 md:w-52">
-            <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Start Date</label>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Start Date</label>
             <input
               type="date"
-              className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition-all"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
             />
           </div>
-          <div className="flex-1 md:w-52">
-            <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">End Date</label>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">End Date</label>
             <input
               type="date"
-              className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition-all"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
             />
@@ -765,209 +748,191 @@ const AttendanceDaily = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto max-h-[70vh]">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50 sticky top-0 z-10 transition-colors">
+      {/* Summary Cards */}
+      {attendanceData.length > 0 && !loading && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-500">Total Employees</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{totalEmployees}</p>
+              </div>
+              <div className="p-2 bg-indigo-50 rounded-lg">
+                <Users size={20} className="text-indigo-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-500">Total Records</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{attendanceData.length}</p>
+              </div>
+              <div className="p-2 bg-blue-50 rounded-lg">
+                <Database size={20} className="text-blue-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-500">Present Today</p>
+                <p className="text-2xl font-bold text-green-600 mt-1">{totalPresent}</p>
+              </div>
+              <div className="p-2 bg-green-50 rounded-lg">
+                <User size={20} className="text-green-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-500">Late Arrivals</p>
+                <p className="text-2xl font-bold text-orange-600 mt-1">{totalLate}</p>
+              </div>
+              <div className="p-2 bg-orange-50 rounded-lg">
+                <TrendingUp size={20} className="text-orange-600" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Attendance Table */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-8">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">S.No.</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Date</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Day</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Working Day</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Employee ID</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Employee Name</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Designation</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">IN Time</th>
-
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Lunch Time</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-orange-600">Waste Time</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">OUT Time</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-indigo-600">Punch Logs</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-cyan-600">Punch log Status</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center">Status</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center">Working Hour</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center">Late Minute</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center">Punch Miss</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Store Name</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Device ID</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Serial NO</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] whitespace-nowrap text-center">Action</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">S.No.</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Date</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Day</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Employee</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">IN Time</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">OUT Time</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Work Hours</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Status</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Store</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Actions</th>
               </tr>
-
             </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan="22" className="px-6 py-20 text-center">
-                    <div className="flex justify-center flex-col items-center">
-                      <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                      <span className="text-indigo-600 font-black tracking-widest text-xs uppercase animate-pulse">Fetching Device Logs...</span>
+                  <td colSpan="10" className="text-center py-12">
+                    <div className="flex items-center justify-center gap-2 text-gray-500">
+                      <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                      Loading attendance data...
                     </div>
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan="22" className="px-6 py-12 text-center">
-                    <p className="text-red-500 font-bold mb-4">Error: {error}</p>
+                  <td colSpan="10" className="text-center py-12">
+                    <p className="text-red-600 mb-3">{error}</p>
                     <button
                       onClick={fetchDeviceLogs}
-                      className="px-6 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold shadow-lg shadow-red-100 transition-all"
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
                     >
-                      Retry Connection
+                      Retry
                     </button>
                   </td>
                 </tr>
               ) : filteredData.length > 0 ? (
                 filteredData.map((item, index) => (
-                  <tr key={index} className="group hover:bg-gray-50/80 transition-all border-l-2 border-transparent hover:border-indigo-500">
-                    <td className="px-6 py-4 whitespace-nowrap text-[10px] font-black text-gray-400">
-                      {index + 1}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-[10px] font-black text-gray-400">
-                      {item.Date}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-600">
-                      {item.Day}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-md border ${item.IsWorkingDay === 'Yes' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
-                        {item.IsWorkingDay}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-600">
-                      {item.EmployeeID || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-gray-900 group-hover:text-indigo-600 transition-colors">
+                  <tr key={index} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-xs text-gray-500">{index + 1}</td>
+                    <td className="px-4 py-3 text-xs font-medium text-gray-700">{item.Date}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{item.Day}</td>
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        {item.EmployeeName || '-'}
-                        <span className={`w-2 h-2 rounded-full ${item.PunchLogStatus === 'Andar' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} title={item.PunchLogStatus}></span>
+                        <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-medium">
+                          {item.EmployeeName?.charAt(0) || '?'}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{item.EmployeeName}</p>
+                          <p className="text-xs text-gray-500">{item.EmployeeID}</p>
+                        </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-medium text-gray-500">
-                      {item.Designation || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs text-indigo-700 font-black">
+                    <td className="px-4 py-3">
                       {editingId === `${item.EmployeeID}_${item.Date}` ? (
                         <input
                           type="text"
-                          className="w-32 px-2 py-1 border border-indigo-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none"
+                          className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
                           value={tempInTime}
                           onChange={(e) => setTempInTime(e.target.value)}
                         />
                       ) : (
-                        formatTime12h(item.InTime)
+                        <span className="text-xs font-mono text-indigo-600 font-medium">
+                          {formatTime12h(item.InTime)}
+                        </span>
                       )}
                     </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap text-xs text-orange-500 font-black">
-                      {item.StandardLunch}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs text-orange-600 font-black">
-                      {item.WasteTime}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs text-red-600 font-bold">
+                    <td className="px-4 py-3">
                       {editingId === `${item.EmployeeID}_${item.Date}` ? (
                         <input
                           type="text"
-                          className="w-32 px-2 py-1 border border-red-300 rounded focus:ring-1 focus:ring-red-500 outline-none"
+                          className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
                           value={tempOutTime}
                           onChange={(e) => setTempOutTime(e.target.value)}
                         />
                       ) : (
-                        formatTime12h(item.OutTime)
+                        <span className="text-xs font-mono text-red-600 font-medium">
+                          {formatTime12h(item.OutTime)}
+                        </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-[10px] font-black text-indigo-600 bg-indigo-50/30 rounded-lg px-3">
-                      <div className="max-w-[250px] overflow-x-auto scrollbar-hide py-1 flex items-center gap-2">
-                        {item.PunchLog}
-                        {(item.IsInEdited || item.IsOutEdited) && (
-                          <span
-                            className="text-[8px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full cursor-help whitespace-nowrap"
-                            title={`Edited: ${[item.IsInEdited ? 'In Time' : '', item.IsOutEdited ? 'Out Time' : ''].filter(Boolean).join(' & ')}`}
-                          >
-                            (Edited)
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-md border ${item.PunchLogStatus === 'Andar' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                        {item.PunchLogStatus}
+                    <td className="px-4 py-3 text-xs font-semibold text-gray-700">{item.WorkingHour}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${item.Status === 'Present' ? 'bg-green-100 text-green-700' :
+                        item.Status === 'Late' ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                        {item.Status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`px-3 py-1 text-[10px] font-black uppercase rounded-full border shadow-sm ${item.Status === 'Present' ? 'bg-green-50 text-green-700 border-green-200' :
-                        item.Status === 'Late' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                          item.Status === 'Holiday' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                            'bg-red-50 text-red-700 border-red-200'}`}>
-                        {item.Status || '-'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-black text-gray-700 text-center">
-                      {editingId === `${item.EmployeeID}_${item.Date}`
-                        ? calculateWorkHours(tempInTime || item.InTime, tempOutTime || item.OutTime, item.Date)
-                        : item.WorkingHour}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-red-500 text-center">
-                      {editingId === `${item.EmployeeID}_${item.Date}`
-                        ? (calculateLateMinutes(tempInTime || item.InTime, item.Date) > 0 ? `${calculateLateMinutes(tempInTime || item.InTime, item.Date)} min` : '-')
-                        : (item.LateMinute > 0 ? `${item.LateMinute} min` : '-')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span
-                        title={item.PunchMissMsg}
-                        className={`text-xs font-black cursor-help transition-all ${item.PunchMiss === 'Yes' ? 'text-red-600 underline decoration-dotted' : 'text-gray-300'}`}
-                      >
-                        {item.PunchMiss}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-700">
-                      {item.StoreName || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-black text-indigo-600">
-                      {item.DeviceID || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-600">
-                      {item.AssignedSerial || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-600 text-center">
+                    <td className="px-4 py-3 text-xs text-gray-600">{item.StoreName || '-'}</td>
+                    <td className="px-4 py-3">
                       {editingId === `${item.EmployeeID}_${item.Date}` ? (
-                        <div className="flex justify-center gap-2">
+                        <div className="flex gap-1">
                           <button
                             onClick={() => handleSaveEdit(item)}
-                            className="p-1.5 bg-green-600 text-white rounded hover:bg-green-700 transition-colors shadow-sm"
-                            title="Save Changes"
+                            className="p-1 text-green-600 hover:text-green-700"
+                            title="Save"
                           >
-                            <CheckCircle size={14} />
+                            <CheckCircle size={16} />
                           </button>
                           <button
                             onClick={handleCancelEdit}
-                            className="p-1.5 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors shadow-sm"
+                            className="p-1 text-red-600 hover:text-red-700"
                             title="Cancel"
                           >
-                            <X size={14} />
+                            <X size={16} />
                           </button>
                         </div>
                       ) : (
                         <button
                           onClick={() => handleStartEdit(item)}
-                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors mx-auto flex"
-                          title="Edit In/Out Time"
+                          className="p-1 text-indigo-600 hover:text-indigo-700"
+                          title="Edit Time"
                         >
-                          <Pencil size={14} />
+                          <Pencil size={16} />
                         </button>
                       )}
                     </td>
                   </tr>
-
                 ))
               ) : (
                 <tr>
-                  <td colSpan="22" className="px-6 py-20 text-center">
-                    <div className="flex flex-col items-center justify-center text-gray-400 bg-gray-50/50 rounded-3xl p-10 border-2 border-dashed border-gray-100 mx-10">
-                      <Search size={48} className="mb-4 opacity-20" />
-                      <p className="font-black uppercase tracking-[0.2em] text-sm">No Logs Found</p>
-                      <p className="text-xs mt-2 font-medium opacity-60">Try adjusting search or dates</p>
+                  <td colSpan="10" className="text-center py-12">
+                    <div className="flex flex-col items-center justify-center text-gray-400">
+                      <Search size={48} className="mb-3" />
+                      <p className="font-medium">No attendance records found</p>
+                      <p className="text-xs mt-1">Try adjusting your filters or sync data</p>
                     </div>
                   </td>
                 </tr>
@@ -977,142 +942,84 @@ const AttendanceDaily = () => {
         </div>
       </div>
 
-      {/* Attendance Log Table (Raw Punches) */}
-      <div className="mt-12 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-gray-50 to-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-          <div>
-            <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">Attendance Log (Raw Punches)</h2>
-            <p className="text-xs font-semibold text-gray-400 mt-1 uppercase tracking-widest">Complete history of all device punches</p>
+      {/* Raw Punches Section */}
+      {rawLogs.length > 0 && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Raw Punch Logs</h2>
+            <div className="flex gap-2">
+              <div className="relative">
+                <input
+                  list="rawIds"
+                  placeholder="Filter by ID..."
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  value={rawSearchId}
+                  onChange={(e) => setRawSearchId(e.target.value)}
+                />
+                <datalist id="rawIds">
+                  {uniqueIds.map(id => <option key={id} value={id} />)}
+                </datalist>
+              </div>
+              <div className="relative">
+                <input
+                  list="rawStores"
+                  placeholder="Filter by store..."
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  value={rawSearchStore}
+                  onChange={(e) => setRawSearchStore(e.target.value)}
+                />
+                <datalist id="rawStores">
+                  {uniqueStores.map(store => <option key={store} value={store} />)}
+                </datalist>
+              </div>
+              {(rawSearchId || rawSearchStore) && (
+                <button
+                  onClick={() => { setRawSearchId(''); setRawSearchStore(''); }}
+                  className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Searchable ID Dropdown */}
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400 group-focus-within:text-indigo-500 transition-colors">
-                <Search size={14} />
-              </div>
-              <input
-                list="rawIds"
-                placeholder="Filter ID..."
-                className="pl-9 pr-4 py-2 text-sm font-medium border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 w-36 bg-white shadow-sm transition-all"
-                value={rawSearchId}
-                onChange={(e) => setRawSearchId(e.target.value)}
-              />
-              <datalist id="rawIds">
-                {uniqueIds.map(id => <option key={id} value={id} />)}
-              </datalist>
-            </div>
-
-            {/* Searchable Store Dropdown */}
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400 group-focus-within:text-purple-500 transition-colors">
-                <Search size={14} />
-              </div>
-              <input
-                list="rawStores"
-                placeholder="Filter Store..."
-                className="pl-9 pr-4 py-2 text-sm font-medium border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/50 w-44 bg-white shadow-sm transition-all"
-                value={rawSearchStore}
-                onChange={(e) => setRawSearchStore(e.target.value)}
-              />
-              <datalist id="rawStores">
-                {uniqueStores.map(store => <option key={store} value={store} />)}
-              </datalist>
-            </div>
-
-            {(rawSearchId || rawSearchStore) && (
-              <button
-                onClick={() => { setRawSearchId(''); setRawSearchStore(''); }}
-                className="px-4 py-2 text-xs font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 hover:text-rose-600 rounded-xl transition-all shadow-sm"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 overflow-hidden relative">
-          <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/50 to-transparent h-20 pointer-events-none"></div>
-          <div className="overflow-x-auto max-h-[70vh] relative z-10 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent">
-            <table className="min-w-full divide-y divide-gray-100/80">
-              <thead className="bg-white/90 backdrop-blur-md sticky top-0 z-20 shadow-[0_2px_10px_rgba(0,0,0,0.03)] border-b border-gray-100">
-                <tr>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Date & Day</th>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] whitespace-nowrap">Punch Time</th>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Employee Details</th>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Location/Store</th>
-                  <th className="px-6 py-5 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Device Info</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 bg-white">
-                {loading ? (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto max-h-96">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
-                    <td colSpan="5" className="px-6 py-16 text-center">
-                      <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
-                      <span className="text-xs font-black uppercase tracking-widest text-indigo-600 animate-pulse">Syncing Raw Logs...</span>
-                    </td>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Date</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Day</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Time</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Employee</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Store</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Device</th>
                   </tr>
-                ) : filteredRawLogs.length > 0 ? (
-                  filteredRawLogs.map((log, idx) => (
-                    <tr key={idx} className="group hover:bg-indigo-50/30 transition-colors duration-200">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-bold text-gray-700">{log.date}</span>
-                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-0.5">{log.day}</span>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredRawLogs.map((log, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-2 text-xs text-gray-700">{log.date}</td>
+                      <td className="px-4 py-2 text-xs text-gray-500">{log.day}</td>
+                      <td className="px-4 py-2 text-xs font-mono font-medium text-indigo-600">{formatTime12h(log.time)}</td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs font-medium">
+                            {log.employeeName?.charAt(0) || '?'}
+                          </div>
+                          <span className="text-xs font-medium text-gray-900">{log.employeeName}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="inline-flex items-center px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-black border border-indigo-100 shadow-sm group-hover:scale-105 transition-transform">
-                          <svg className="w-4 h-4 mr-1.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                          {formatTime12h(log.time)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-slate-700">
-                        <div className="flex items-center">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-gray-100 to-gray-200 flex items-center justify-center text-gray-600 font-bold mr-3 border border-gray-200 shadow-sm">
-                            {log.employeeName.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-sm font-black text-gray-800">{log.employeeName}</span>
-                            <span className="text-[10px] font-bold text-gray-400 mt-0.5">ID: {log.employeeId}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-gray-100 text-gray-600 border border-gray-200">
-                          {log.storeName}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-50 w-max px-2 py-0.5 rounded border border-emerald-100">
-                            {log.deviceId !== '-' ? `ID: ${log.deviceId}` : 'API LOG'}
-                          </div>
-                          <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-widest">
-                            SN: {log.serialNo}
-                          </div>
-                        </div>
-                      </td>
+                      <td className="px-4 py-2 text-xs text-gray-600">{log.storeName}</td>
+                      <td className="px-4 py-2 text-xs font-mono text-gray-500">{log.serialNo}</td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="5" className="px-6 py-24 text-center">
-                      <div className="flex flex-col items-center justify-center text-gray-400 max-w-sm mx-auto">
-                        <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mb-4 transform rotate-3 shadow-inner">
-                          <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                        </div>
-                        <p className="font-black uppercase tracking-[0.2em] text-sm text-gray-600 mb-1">No Raw Logs Found</p>
-                        <p className="text-xs font-medium text-gray-400">Try adjusting your filters or search terms to find what you're looking for.</p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

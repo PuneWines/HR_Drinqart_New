@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, UserCheck, Clock, UserX, Briefcase, Calendar, TrendingUp, Award, PieChart } from 'lucide-react'
+import { Users, UserCheck, Clock, UserX, Briefcase, Calendar, TrendingUp, Award, PieChart, Filter, Search } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 export default function Dashboard() {
@@ -61,17 +61,17 @@ export default function Dashboard() {
                     count: active,
                     percentage: total ? Math.round((active / total) * 100) : 0,
                     color: '#10b981',
-                    bgColor: 'bg-emerald-500',
-                    lightBg: 'bg-emerald-50',
-                    textColor: 'text-emerald-600'
+                    bgColor: 'bg-green-100',
+                    badgeColor: 'bg-green-100 text-green-700',
+                    textColor: 'text-green-600'
                 },
                 {
                     name: 'Inactive',
                     count: inactive,
                     percentage: total ? Math.round((inactive / total) * 100) : 0,
                     color: '#f59e0b',
-                    bgColor: 'bg-amber-500',
-                    lightBg: 'bg-amber-50',
+                    bgColor: 'bg-amber-100',
+                    badgeColor: 'bg-amber-100 text-amber-700',
                     textColor: 'text-amber-600'
                 },
                 {
@@ -79,8 +79,8 @@ export default function Dashboard() {
                     count: left,
                     percentage: total ? Math.round((left / total) * 100) : 0,
                     color: '#ef4444',
-                    bgColor: 'bg-red-500',
-                    lightBg: 'bg-red-50',
+                    bgColor: 'bg-red-100',
+                    badgeColor: 'bg-red-100 text-red-700',
                     textColor: 'text-red-600'
                 }
             ]
@@ -106,7 +106,7 @@ export default function Dashboard() {
         return `${Math.floor(diffDays / 30)} months ago`
     }
 
-    // Calculate pie chart segments (using simple CSS conic-gradient)
+    // Calculate pie chart segments
     const getPieChartGradient = () => {
         const activePercent = statusDistribution[0]?.percentage || 0
         const inactivePercent = statusDistribution[1]?.percentage || 0
@@ -140,12 +140,33 @@ export default function Dashboard() {
         return `conic-gradient(${segments.join(', ')})`
     }
 
+    const StatCard = ({ icon: Icon, title, value, color, bgColor, trend }) => (
+        <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                    <p className="text-sm text-gray-500 font-medium">{title}</p>
+                    <h3 className="text-3xl font-bold text-gray-900">{value}</h3>
+                    {trend && <p className="text-xs text-green-600">{trend}</p>}
+                </div>
+                <div className={`p-3 rounded-lg ${bgColor}`}>
+                    <Icon size={24} className={color} />
+                </div>
+            </div>
+        </div>
+    )
+
     return (
-        <div className="p-6 space-y-6">
+        <div className="p-10 pt-5">
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <h1 className="text-2xl font-bold text-gray-800">HR Dashboard</h1>
+            <div className="flex justify-between items-center mb-6">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                        <PieChart size={28} />
+                        Dashboard
+                    </h1>
+                    <p className="text-gray-500 text-sm mt-1">
+                        Overview of employee statistics and activities
+                    </p>
                 </div>
                 <div className="text-right">
                     <p className="text-sm text-gray-500">
@@ -157,59 +178,52 @@ export default function Dashboard() {
             {/* Loading State */}
             {loading ? (
                 <div className="flex justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                    <div className="flex items-center gap-2 text-gray-500">
+                        <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                        Loading dashboard data...
+                    </div>
                 </div>
             ) : (
                 <>
-                    {/* Summary Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <div className="bg-white rounded-xl shadow-lg  p-6 flex items-start hover:shadow-xl transition-shadow">
-                            <div className="p-3 rounded-full bg-blue-100 mr-4">
-                                <Users size={24} className="text-blue-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-600 font-medium">Total Employees</p>
-                                <h3 className="text-2xl font-bold text-gray-800">{totalEmployee}</h3>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl shadow-lg  p-6 flex items-start hover:shadow-xl transition-shadow">
-                            <div className="p-3 rounded-full bg-green-100 mr-4">
-                                <UserCheck size={24} className="text-green-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-600 font-medium">Active Employees</p>
-                                <h3 className="text-2xl font-bold text-gray-800">{activeEmployee}</h3>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl shadow-lg  p-6 flex items-start hover:shadow-xl transition-shadow">
-                            <div className="p-3 rounded-full bg-amber-100 mr-4">
-                                <Clock size={24} className="text-amber-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-600 font-medium">On Resigned</p>
-                                <h3 className="text-2xl font-bold text-gray-800">{leftEmployee}</h3>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl shadow-lg  p-6 flex items-start hover:shadow-xl transition-shadow">
-                            <div className="p-3 rounded-full bg-red-100 mr-4">
-                                <UserX size={24} className="text-red-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-600 font-medium">Left This Month</p>
-                                <h3 className="text-2xl font-bold text-gray-800">{leaveThisMonth}</h3>
-                            </div>
-                        </div>
+                    {/* Summary Stats Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                        <StatCard
+                            icon={Users}
+                            title="Total Employees"
+                            value={totalEmployee}
+                            color="text-blue-600"
+                            bgColor="bg-blue-50"
+                        />
+                        <StatCard
+                            icon={UserCheck}
+                            title="Active Employees"
+                            value={activeEmployee}
+                            color="text-green-600"
+                            bgColor="bg-green-50"
+                            trend={`${totalEmployee ? Math.round((activeEmployee / totalEmployee) * 100) : 0}% of total`}
+                        />
+                        <StatCard
+                            icon={UserX}
+                            title="Inactive Employees"
+                            value={inactiveEmployee}
+                            color="text-amber-600"
+                            bgColor="bg-amber-50"
+                        />
+                        <StatCard
+                            icon={Clock}
+                            title="Left This Month"
+                            value={leaveThisMonth}
+                            color="text-red-600"
+                            bgColor="bg-red-50"
+                        />
                     </div>
 
                     {/* Charts and Activity Section */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
                         {/* Employee Status Distribution - Pie Chart */}
-                        <div className="lg:col-span-2 bg-white rounded-xl shadow-lg  p-6">
+                        <div className="lg:col-span-2 bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-lg font-semibold text-gray-800">Employee Status Distribution</h2>
+                                <h2 className="text-lg font-semibold text-gray-900">Employee Status Distribution</h2>
                                 <PieChart size={20} className="text-gray-400" />
                             </div>
 
@@ -218,12 +232,12 @@ export default function Dashboard() {
                                     {/* Pie Chart */}
                                     <div className="relative w-48 h-48">
                                         <div
-                                            className="w-full h-full rounded-full shadow-lg transition-all duration-500"
+                                            className="w-full h-full rounded-full shadow-sm transition-all duration-500"
                                             style={{ background: getPieChartGradient() }}
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center">
                                             <div className="text-center">
-                                                <p className="text-2xl font-bold text-gray-800">{totalEmployee}</p>
+                                                <p className="text-2xl font-bold text-gray-900">{totalEmployee}</p>
                                                 <p className="text-xs text-gray-500">Total</p>
                                             </div>
                                         </div>
@@ -234,11 +248,11 @@ export default function Dashboard() {
                                         {statusDistribution.map((status) => (
                                             <div key={status.name} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors">
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-3 h-3 rounded-full ${status.bgColor}`} />
+                                                    <div className={`w-3 h-3 rounded-full ${status.bgColor.replace('100', '500')}`} />
                                                     <span className="text-sm font-medium text-gray-700">{status.name}</span>
                                                 </div>
                                                 <div className="text-right">
-                                                    <span className="text-sm font-semibold text-gray-800">{status.count}</span>
+                                                    <span className="text-sm font-semibold text-gray-900">{status.count}</span>
                                                     <span className="text-xs text-gray-500 ml-1">({status.percentage}%)</span>
                                                 </div>
                                             </div>
@@ -246,7 +260,9 @@ export default function Dashboard() {
                                     </div>
                                 </div>
                             ) : (
-                                <p className="text-center text-gray-400 py-8">No employee data available</p>
+                                <div className="text-center py-8">
+                                    <p className="text-gray-400">No employee data available</p>
+                                </div>
                             )}
 
                             {/* Quick Stats */}
@@ -273,27 +289,27 @@ export default function Dashboard() {
                         </div>
 
                         {/* Recent Activities */}
-                        <div className="bg-white rounded-xl shadow-lg  p-6">
+                        <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-lg font-semibold text-gray-800">Recent Activities</h2>
+                                <h2 className="text-lg font-semibold text-gray-900">Recent Activities</h2>
                                 <Calendar size={20} className="text-gray-400" />
                             </div>
                             <div className="space-y-4">
                                 {recentEmployees.length > 0 ? (
                                     recentEmployees.map((emp) => (
                                         <div key={emp.id} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
-                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                                            <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold shrink-0">
                                                 {emp.name_as_per_aadhar?.charAt(0) || '?'}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-gray-800">{emp.name_as_per_aadhar}</p>
-                                                <p className="text-xs text-gray-500">{emp.designation} joined</p>
+                                                <p className="text-sm font-medium text-gray-900">{emp.name_as_per_aadhar}</p>
+                                                <p className="text-xs text-gray-500">{emp.designation || 'Employee'} joined</p>
                                             </div>
                                             <div className="text-right">
                                                 <p className="text-xs text-gray-400">{formatDate(emp.date_of_joining)}</p>
                                                 <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${emp.status === 'Active' ? 'bg-green-100 text-green-700' :
-                                                    emp.status === 'Inactive' ? 'bg-amber-100 text-amber-700' :
-                                                        'bg-red-100 text-red-700'
+                                                        emp.status === 'Inactive' ? 'bg-amber-100 text-amber-700' :
+                                                            'bg-red-100 text-red-700'
                                                     }`}>
                                                     {emp.status}
                                                 </span>
@@ -301,7 +317,9 @@ export default function Dashboard() {
                                         </div>
                                     ))
                                 ) : (
-                                    <p className="text-center text-gray-400 py-8">No recent activities</p>
+                                    <div className="text-center py-8">
+                                        <p className="text-gray-400">No recent activities</p>
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -309,36 +327,36 @@ export default function Dashboard() {
 
                     {/* Bottom Stats Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+                        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
                             <div className="flex items-center justify-between mb-4">
                                 <TrendingUp size={28} />
                                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full">This Year</span>
                             </div>
-                            <p className="text-2xl font-bold">{totalEmployee}</p>
+                            <p className="text-3xl font-bold">{totalEmployee}</p>
                             <p className="text-sm opacity-90 mt-1">Total Employees</p>
                             <div className="mt-4 pt-4 border-t border-white/20">
                                 <p className="text-xs opacity-75">+{activeEmployee} active employees</p>
                             </div>
                         </div>
 
-                        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
+                        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
                             <div className="flex items-center justify-between mb-4">
                                 <Award size={28} />
                                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Current</span>
                             </div>
-                            <p className="text-2xl font-bold">{activeEmployee}</p>
+                            <p className="text-3xl font-bold">{activeEmployee}</p>
                             <p className="text-sm opacity-90 mt-1">Active Employees</p>
                             <div className="mt-4 pt-4 border-t border-white/20">
                                 <p className="text-xs opacity-75">{totalEmployee ? Math.round((activeEmployee / totalEmployee) * 100) : 0}% of total workforce</p>
                             </div>
                         </div>
 
-                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
                             <div className="flex items-center justify-between mb-4">
-                                <Users size={28} />
+                                <Briefcase size={28} />
                                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Status</span>
                             </div>
-                            <p className="text-2xl font-bold">{statusDistribution.filter(s => s.count > 0).length}</p>
+                            <p className="text-3xl font-bold">{statusDistribution.filter(s => s.count > 0).length}</p>
                             <p className="text-sm opacity-90 mt-1">Active Status Types</p>
                             <div className="mt-4 pt-4 border-t border-white/20">
                                 <p className="text-xs opacity-75">Active, Inactive, Left</p>
