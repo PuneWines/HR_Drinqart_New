@@ -52,7 +52,7 @@ const Attendance = () => {
 
 
             {/* Tab Navigation */}
-            <div className="px-8 pt-6">
+            <div className="px-2 pt-2">
                 <div className="flex gap-2 border-b border-gray-200">
                     <button
                         onClick={() => navigate('/attendance/daily')}
@@ -78,7 +78,7 @@ const Attendance = () => {
             </div>
 
             {/* Main Content */}
-            <div className="p-8">
+            <div className="p-8 pt-2">
                 {activeSubTab === 'daily' ? (
                     <Attendancedaily />
                 ) : (

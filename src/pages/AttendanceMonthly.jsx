@@ -181,23 +181,23 @@ const AttendanceMonthly = () => {
     const totalLate = attendanceData.reduce((sum, d) => sum + (parseInt(d.lateDays) || 0), 0);
 
     return (
-        <div className="p-5 pt-2 w-[78vw]">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-6">
+        <div className="p-3">
+            {/* Header - Compact */}
+            <div className="flex justify-between items-center mb-3">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                        <Calendar size={28} />
+                    <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+                        <Calendar size={18} />
                         Monthly Attendance
                     </h1>
-                    <p className="text-gray-500 text-sm mt-1">
+                    <p className="text-gray-500 text-[11px] mt-0.5">
                         Track and manage employee attendance records
                     </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                     {lastSynced && (
-                        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-                            <Database size={14} className="text-gray-400" />
-                            <span className="text-xs text-gray-500">
+                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-md">
+                            <Database size={10} className="text-gray-400" />
+                            <span className="text-[10px] text-gray-500">
                                 Synced: {new Date(lastSynced).toLocaleString('en-IN')}
                             </span>
                         </div>
@@ -205,43 +205,43 @@ const AttendanceMonthly = () => {
                     <button
                         onClick={() => fetchAttendanceData(true)}
                         disabled={loading || syncing}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium text-sm transition-colors ${loading || syncing
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-medium text-xs transition-colors ${loading || syncing
                             ? 'bg-indigo-300 cursor-not-allowed'
                             : 'bg-indigo-600 hover:bg-indigo-700'
                             }`}
                     >
                         {syncing ? (
-                            <Loader2 size={16} className="animate-spin" />
+                            <Loader2 size={12} className="animate-spin" />
                         ) : (
-                            <RefreshCw size={16} />
+                            <RefreshCw size={12} />
                         )}
                         {syncing ? 'Syncing...' : 'Sync Logs'}
                     </button>
                     <button
                         onClick={downloadExcel}
                         disabled={filteredData.length === 0}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium text-sm transition-colors ${filteredData.length === 0
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-medium text-xs transition-colors ${filteredData.length === 0
                             ? 'bg-gray-400 cursor-not-allowed'
                             : 'bg-green-600 hover:bg-green-700'
                             }`}
                     >
-                        <Download size={16} />
-                        Export Excel
+                        <Download size={12} />
+                        Export
                     </button>
                 </div>
             </div>
 
-            {/* Filter Section */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Filter Section - Compact */}
+            <div className="bg-white rounded-md border border-gray-200 p-2 mb-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
                     <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Search Employee</label>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Search Employee</label>
                         <div className="relative">
-                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
                                 type="text"
                                 placeholder="Search by name or code..."
-                                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
@@ -249,7 +249,7 @@ const AttendanceMonthly = () => {
                     </div>
 
                     <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Select Device</label>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Device</label>
                         <div className="relative">
                             <select
                                 value={selectedDevice.name}
@@ -262,23 +262,23 @@ const AttendanceMonthly = () => {
                                         if (device) setSelectedDevice(device);
                                     }
                                 }}
-                                className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white"
+                                className="w-full appearance-none pl-2 pr-6 py-1.5 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs bg-white"
                             >
                                 <option value="ALL DEVICES">📊 All Devices</option>
                                 {DEVICES.map(d => (
                                     <option key={d.name} value={d.name}>{d.name}</option>
                                 ))}
                             </select>
-                            <Filter size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                            <Filter size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Select Month</label>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Month</label>
                         <select
                             value={selectedMonth}
                             onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white"
+                            className="w-full px-2 py-1.5 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs bg-white"
                         >
                             {monthNames.map((m, idx) => (
                                 <option key={m} value={idx + 1}>{m}</option>
@@ -287,11 +287,11 @@ const AttendanceMonthly = () => {
                     </div>
 
                     <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Select Year</label>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Year</label>
                         <select
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white"
+                            className="w-full px-2 py-1.5 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs bg-white"
                         >
                             {[2024, 2025, 2026].map(y => (
                                 <option key={y} value={y}>{y}</option>
@@ -301,99 +301,99 @@ const AttendanceMonthly = () => {
                 </div>
             </div>
 
-            {/* Summary Cards for All Devices View */}
+            {/* Summary Cards - Compact */}
             {selectedDevice.serial === 'ALL' && attendanceData.length > 0 && !loading && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                    <div className="bg-white rounded-md border border-gray-200 p-2.5">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-xs font-medium text-gray-500">Total Employees</p>
-                                <p className="text-2xl font-bold text-gray-900 mt-1">{totalEmployees}</p>
+                                <p className="text-[10px] font-medium text-gray-500">Total Employees</p>
+                                <p className="text-xl font-bold text-gray-900 mt-0.5">{totalEmployees}</p>
                             </div>
-                            <div className="p-2 bg-indigo-50 rounded-lg">
-                                <Users size={20} className="text-indigo-600" />
+                            <div className="p-1.5 bg-indigo-50 rounded-md">
+                                <Users size={14} className="text-indigo-600" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <div className="bg-white rounded-md border border-gray-200 p-2.5">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-xs font-medium text-gray-500">Total Present Days</p>
-                                <p className="text-2xl font-bold text-green-600 mt-1">{totalPresent}</p>
+                                <p className="text-[10px] font-medium text-gray-500">Total Present</p>
+                                <p className="text-xl font-bold text-green-600 mt-0.5">{totalPresent}</p>
                             </div>
-                            <div className="p-2 bg-green-50 rounded-lg">
-                                <Clock size={20} className="text-green-600" />
+                            <div className="p-1.5 bg-green-50 rounded-md">
+                                <Clock size={14} className="text-green-600" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <div className="bg-white rounded-md border border-gray-200 p-2.5">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-xs font-medium text-gray-500">Total Absent Days</p>
-                                <p className="text-2xl font-bold text-red-600 mt-1">{totalAbsent}</p>
+                                <p className="text-[10px] font-medium text-gray-500">Total Absent</p>
+                                <p className="text-xl font-bold text-red-600 mt-0.5">{totalAbsent}</p>
                             </div>
-                            <div className="p-2 bg-red-50 rounded-lg">
-                                <User size={20} className="text-red-600" />
+                            <div className="p-1.5 bg-red-50 rounded-md">
+                                <User size={14} className="text-red-600" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <div className="bg-white rounded-md border border-gray-200 p-2.5">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-xs font-medium text-gray-500">Total Late Days</p>
-                                <p className="text-2xl font-bold text-orange-600 mt-1">{totalLate}</p>
+                                <p className="text-[10px] font-medium text-gray-500">Total Late</p>
+                                <p className="text-xl font-bold text-orange-600 mt-0.5">{totalLate}</p>
                             </div>
-                            <div className="p-2 bg-orange-50 rounded-lg">
-                                <TrendingUp size={20} className="text-orange-600" />
+                            <div className="p-1.5 bg-orange-50 rounded-md">
+                                <TrendingUp size={14} className="text-orange-600" />
                             </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Table */}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-200">
+            {/* Table - Compact */}
+            <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto max-h-[calc(100vh-220px)] overflow-y-auto">
+                    <table className="w-full text-xs relative border-collapse">
+                        <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">S.No.</th>
-                                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Month/Year</th>
-                                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Employee Code</th>
-                                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Employee Name</th>
-                                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Designation</th>
-                                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Store Name</th>
-                                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Device ID</th>
-                                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Serial No</th>
-                                <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Present</th>
-                                <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Absent</th>
-                                <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Punch Miss</th>
-                                <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Holidays</th>
-                                <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Late Days</th>
-                                <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Work Hours</th>
-                                <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Lunch Time</th>
+                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-12 z-10">#</th>
+                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-24 z-10">Month/Year</th>
+                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-24 z-10">Employee Code</th>
+                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-32 z-10">Employee Name</th>
+                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-28 z-10">Designation</th>
+                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-24 z-10">Store</th>
+                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-20 z-10">Device ID</th>
+                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-28 z-10">Serial No</th>
+                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-20 z-10">Present</th>
+                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-20 z-10">Absent</th>
+                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-20 z-10">Punch Miss</th>
+                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-16 z-10">Holidays</th>
+                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-16 z-10">Late</th>
+                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-20 z-10">Work Hrs</th>
+                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-20 z-10">Lunch</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan="15" className="text-center py-12">
-                                        <div className="flex items-center justify-center gap-2 text-gray-500">
-                                            <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                                            Loading attendance data...
+                                    <td colSpan="15" className="text-center py-8">
+                                        <div className="flex items-center justify-center gap-1.5 text-gray-500 text-xs">
+                                            <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                            Loading...
                                         </div>
                                     </td>
                                 </tr>
                             ) : error ? (
                                 <tr>
-                                    <td colSpan="15" className="text-center py-12">
-                                        <p className="text-red-600 mb-3">{error}</p>
+                                    <td colSpan="15" className="text-center py-8">
+                                        <p className="text-red-600 text-xs mb-2">{error}</p>
                                         <button
                                             onClick={() => fetchAttendanceData()}
-                                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+                                            className="px-3 py-1 bg-indigo-600 text-white rounded text-xs"
                                         >
                                             Retry
                                         </button>
@@ -402,45 +402,45 @@ const AttendanceMonthly = () => {
                             ) : filteredData.length > 0 ? (
                                 filteredData.map((item, index) => (
                                     <tr key={index} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-4 py-3 text-xs text-gray-500">{index + 1}</td>
-                                        <td className="px-4 py-3 text-xs font-medium text-gray-700">{item.month} {item.year}</td>
-                                        <td className="px-4 py-3 text-xs font-mono font-medium text-gray-900">{item.employeeCode}</td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-medium">
+                                        <td className="px-2 py-1.5 text-[10px] text-gray-500">{index + 1}</td>
+                                        <td className="px-2 py-1.5 text-[10px] font-medium text-gray-700">{item.month} {item.year}</td>
+                                        <td className="px-2 py-1.5 text-[10px] font-mono font-medium text-gray-900">{item.employeeCode}</td>
+                                        <td className="px-2 py-1.5">
+                                            <div className="flex items-center gap-1.5">
+                                                <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[9px] font-medium">
                                                     {item.employeeName?.charAt(0) || '?'}
                                                 </div>
-                                                <span className="text-sm font-medium text-gray-900">{item.employeeName}</span>
+                                                <span className="text-[11px] font-medium text-gray-900">{item.employeeName}</span>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-xs text-gray-600">{item.designation}</td>
-                                        <td className="px-4 py-3 text-xs text-gray-600">{item.storeName}</td>
-                                        <td className="px-4 py-3 text-xs font-mono text-gray-500">{item.deviceId}</td>
-                                        <td className="px-4 py-3 text-xs font-mono text-gray-500">{item.serialNo}</td>
-                                        <td className="px-4 py-3 text-center">
-                                            <span className="inline-flex px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">
-                                                {item.presentDays} days
+                                        <td className="px-2 py-1.5 text-[10px] text-gray-600">{item.designation || '-'}</td>
+                                        <td className="px-2 py-1.5 text-[10px] text-gray-600">{item.storeName || '-'}</td>
+                                        <td className="px-2 py-1.5 text-[10px] font-mono text-gray-500">{item.deviceId || '-'}</td>
+                                        <td className="px-2 py-1.5 text-[10px] font-mono text-gray-500">{item.serialNo || '-'}</td>
+                                        <td className="px-2 py-1.5 text-center">
+                                            <span className="inline-flex px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
+                                                {item.presentDays}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-center">
-                                            <span className="inline-flex px-2 py-1 bg-red-100 text-red-700 rounded-md text-xs font-medium">
-                                                {item.absentDays} days
+                                        <td className="px-2 py-1.5 text-center">
+                                            <span className="inline-flex px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-medium">
+                                                {item.absentDays}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-center text-xs text-red-500 font-medium">{item.punchMiss}</td>
-                                        <td className="px-4 py-3 text-center text-xs text-indigo-600 font-medium">{item.holidays}</td>
-                                        <td className="px-4 py-3 text-center text-xs text-orange-600 font-medium">{item.lateDays}</td>
-                                        <td className="px-4 py-3 text-center text-xs font-semibold text-gray-700">{item.totalWorkHours}</td>
-                                        <td className="px-4 py-3 text-center text-xs font-semibold text-blue-600">{item.totalLunchTime}</td>
+                                        <td className="px-2 py-1.5 text-center text-[10px] text-red-500 font-medium">{item.punchMiss || 0}</td>
+                                        <td className="px-2 py-1.5 text-center text-[10px] text-indigo-600 font-medium">{item.holidays || 0}</td>
+                                        <td className="px-2 py-1.5 text-center text-[10px] text-orange-600 font-medium">{item.lateDays || 0}</td>
+                                        <td className="px-2 py-1.5 text-center text-[10px] font-semibold text-gray-700">{item.totalWorkHours || '0h'}</td>
+                                        <td className="px-2 py-1.5 text-center text-[10px] font-semibold text-blue-600">{item.totalLunchTime || '0h'}</td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan="15" className="text-center py-12">
+                                    <td colSpan="15" className="text-center py-8">
                                         <div className="flex flex-col items-center justify-center text-gray-400">
-                                            <Search size={48} className="mb-3" />
-                                            <p className="font-medium">No attendance records found</p>
-                                            <p className="text-xs mt-1">Try adjusting your filters or sync data</p>
+                                            <Search size={28} className="mb-2" />
+                                            <p className="text-xs font-medium">No records found</p>
+                                            <p className="text-[10px] mt-0.5">Adjust filters or sync data</p>
                                         </div>
                                     </td>
                                 </tr>

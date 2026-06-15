@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { Search, Download, Calendar, Loader2, CheckCircle, X, Clock, Pencil, Filter, Users, User, Clock as ClockIcon, TrendingUp, Database } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Search, Download, Calendar, Loader2, CheckCircle, X, Clock, Pencil, Filter, Users, User, Clock as ClockIcon, TrendingUp, Database, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { supabase } from '../lib/supabase';
 
 const DEVICES = [
   { name: 'ALL DEVICES', serial: 'ALL', apiName: 'ALL' },
@@ -13,23 +14,55 @@ const DEVICES = [
 
 const JOINING_API_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch';
 
+// Status colors and labels - compact version
+const STATUS_CONFIG = {
+  'Present': { color: 'bg-green-100 text-green-700', label: 'P', fullLabel: 'Present', bgColor: 'bg-green-50' },
+  'Late': { color: 'bg-orange-100 text-orange-700', label: 'L', fullLabel: 'Late', bgColor: 'bg-orange-50' },
+  'Absent': { color: 'bg-red-100 text-red-700', label: 'A', fullLabel: 'Absent', bgColor: 'bg-red-50' },
+  'Half Day': { color: 'bg-yellow-100 text-yellow-700', label: 'H', fullLabel: 'Half Day', bgColor: 'bg-yellow-50' },
+  'Holiday': { color: 'bg-purple-100 text-purple-700', label: 'Hol', fullLabel: 'Holiday', bgColor: 'bg-purple-50' },
+  'Day Off': { color: 'bg-gray-100 text-gray-700', label: 'DO', fullLabel: 'Day Off', bgColor: 'bg-gray-50' },
+  'On Leave': { color: 'bg-blue-100 text-blue-700', label: 'Lv', fullLabel: 'On Leave', bgColor: 'bg-blue-50' },
+  'Future': { color: 'bg-transparent  border-transparent', label: '-', fullLabel: '', bgColor: 'bg-transparent' }
+};
+
 const AttendanceDaily = () => {
-  const todayDate = new Date().toISOString().split('T')[0];
+  const getLocalDateString = (date = new Date()) => {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  const todayDate = getLocalDateString();
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState('');
-  const [startDate, setStartDate] = useState(todayDate);
-  const [endDate, setEndDate] = useState(todayDate);
   const [selectedDevice, setSelectedDevice] = useState(DEVICES[0]);
+  const [selectedStore, setSelectedStore] = useState('ALL');
   const [attendanceData, setAttendanceData] = useState([]);
+  const [viewMode, setViewMode] = useState('calendar'); // 'calendar' or 'daily'
+  const [selectedDate, setSelectedDate] = useState(todayDate);
+
+  const handleDateChange = (dateStr) => {
+    if (!dateStr) return;
+    setSelectedDate(dateStr);
+    const newDateObj = new Date(dateStr);
+    if (!isNaN(newDateObj.getTime())) {
+      if (newDateObj.getMonth() !== currentMonth.getMonth() || newDateObj.getFullYear() !== currentMonth.getFullYear()) {
+        setCurrentMonth(newDateObj);
+      }
+    }
+  };
+  const [employees, setEmployees] = useState([]);
   const [rawLogs, setRawLogs] = useState([]);
-  const [rawSearchId, setRawSearchId] = useState('');
-  const [rawSearchStore, setRawSearchStore] = useState('');
   const [joiningData, setJoiningData] = useState([]);
   const [deviceMapping, setDeviceMapping] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
-  const [editingId, setEditingId] = useState(null);
+  const [selectedCell, setSelectedCell] = useState(null);
+  const [editingCell, setEditingCell] = useState(null);
+  const [tempStatus, setTempStatus] = useState('');
   const [tempInTime, setTempInTime] = useState('');
   const [tempOutTime, setTempOutTime] = useState('');
 
@@ -111,27 +144,6 @@ const AttendanceDaily = () => {
     }
   };
 
-  const calculateOvertime = (workHoursStr) => {
-    if (!workHoursStr || workHoursStr === '0h 0m' || workHoursStr === '00:00:00') return '0h 0m';
-    try {
-      let h = 0, m = 0;
-      if (workHoursStr.includes(':')) {
-        const parts = workHoursStr.split(':').map(Number);
-        h = parts[0] || 0;
-        m = parts[1] || 0;
-      } else {
-        const parts = workHoursStr.split(' ').map(s => parseInt(s) || 0);
-        h = parts[0] || 0;
-        m = parts[1] || 0;
-      }
-      const totalMinutes = h * 60 + m;
-      const standardMinutes = 8 * 60;
-      if (totalMinutes <= standardMinutes) return '0h 0m';
-      const otMinutes = totalMinutes - standardMinutes;
-      return `${Math.floor(otMinutes / 60)}h ${otMinutes % 60}m`;
-    } catch (e) { return '0h 0m'; }
-  };
-
   const calculateLateMinutes = (inStr, dateContext = '') => {
     if (!inStr || inStr === '-') return 0;
     try {
@@ -182,8 +194,56 @@ const AttendanceDaily = () => {
     }
   };
 
-  const syncToMachineDataSheet = async (data) => {
-    if (!data || data.length === 0) return;
+  // Save attendance to Supabase using UPSERT
+  const saveAttendanceToDB = async (aggregatedData) => {
+    if (!aggregatedData || aggregatedData.length === 0) return [];
+
+    try {
+      const rows = aggregatedData.map(item => ({
+        employee_id: item.EmployeeID,
+        employee_name: item.EmployeeName,
+        attendance_date: item.Date,
+        day: item.Day,
+        designation: item.Designation,
+        store_name: item.StoreName,
+        device_id: item.DeviceID,
+        serial_number: item.AssignedSerial || item.SerialNumber,
+        in_time: item.InTime !== '-' ? new Date(item.InTime.replace(/-/g, '/')) : null,
+        out_time: item.OutTime !== '-' ? new Date(item.OutTime.replace(/-/g, '/')) : null,
+        working_hour: item.WorkingHour,
+        overtime: item.Overtime,
+        late_minute: item.LateMinute,
+        status: item.Status,
+        standard_lunch: item.StandardLunch,
+        waste_time: item.WasteTime,
+        punch_log: item.PunchLog,
+        punch_log_status: item.PunchLogStatus,
+        punch_miss: item.PunchMiss,
+        punch_miss_msg: item.PunchMissMsg,
+        updated_at: new Date()
+      }));
+
+      const { data, error } = await supabase
+        .from('attendance_logs')
+        .upsert(rows, {
+          onConflict: 'employee_id,attendance_date',
+          ignoreDuplicates: false
+        })
+        .select();
+
+      if (error) throw error;
+
+      console.log(`UPSERT complete: ${data?.length || 0} rows affected`);
+      return data || [];
+    } catch (err) {
+      console.error('Error saving to Supabase:', err);
+      throw err;
+    }
+  };
+
+  // Sync only changed rows to Google Sheet
+  const syncToMachineDataSheet = async (changedRows) => {
+    if (!changedRows || changedRows.length === 0) return;
 
     setSyncing(true);
     setSyncProgress(0);
@@ -194,18 +254,18 @@ const AttendanceDaily = () => {
     let failCount = 0;
     const batchSize = 5;
 
-    for (let i = 0; i < data.length; i += batchSize) {
-      const batch = data.slice(i, i + batchSize);
+    for (let i = 0; i < changedRows.length; i += batchSize) {
+      const batch = changedRows.slice(i, i + batchSize);
 
       await Promise.all(batch.map(async (item) => {
         const rowData = [
-          item.EmployeeID || item.EmployeeCode || '-',
-          item.EmployeeName || '-',
-          item.Date || '-',
-          formatTime12h(item.InTime),
-          formatTime12h(item.OutTime),
-          item.WorkingHour || '-',
-          item.StoreName || '-'
+          item.employee_id || item.EmployeeID || '-',
+          item.employee_name || item.EmployeeName || '-',
+          item.attendance_date || item.Date || '-',
+          formatTime12h(item.in_time || item.InTime),
+          formatTime12h(item.out_time || item.OutTime),
+          item.working_hour || item.WorkingHour || '-',
+          item.store_name || item.StoreName || '-'
         ];
 
         try {
@@ -228,95 +288,57 @@ const AttendanceDaily = () => {
         }
       }));
 
-      setSyncProgress(Math.round((Math.min(i + batchSize, data.length) / data.length) * 100));
+      setSyncProgress(Math.round((Math.min(i + batchSize, changedRows.length) / changedRows.length) * 100));
     }
 
     setSyncing(false);
     if (successCount > 0) {
-      console.log(`Synced ${successCount} records to Formatted_Attendance Sheet. ${failCount} failed.`);
+      console.log(`Synced ${successCount} changed records to Formatted_Attendance Sheet. ${failCount} failed.`);
     }
   };
 
-  const handleStartEdit = (item) => {
-    setEditingId(`${item.EmployeeID}_${item.Date}`);
-    setTempInTime(item.InTime === '-' ? '' : item.InTime);
-    setTempOutTime(item.OutTime === '-' ? '' : item.OutTime);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setTempInTime('');
-    setTempOutTime('');
-  };
-
-  const handleSaveEdit = async (item) => {
+  // Fetch attendance from Supabase
+  const fetchAttendanceFromDB = async () => {
     setLoading(true);
     try {
-      const newInTime = tempInTime || item.InTime;
-      const newOutTime = tempOutTime || item.OutTime;
+      const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
 
-      const newLateMins = calculateLateMinutes(newInTime, item.Date);
-      const newWorkHrs = calculateWorkHours(newInTime, newOutTime, item.Date);
-      const newOvertimeHrs = calculateOvertime(newWorkHrs);
+      const startDateStr = getLocalDateString(startOfMonth);
+      const endDateStr = getLocalDateString(endOfMonth);
 
-      const isInEdited = newInTime !== item.InTime;
-      const isOutEdited = newOutTime !== item.OutTime;
+      let query = supabase
+        .from('attendance_logs')
+        .select('*')
+        .gte('attendance_date', startDateStr)
+        .lte('attendance_date', endDateStr)
+        .order('attendance_date', { ascending: true });
 
-      const updatedItem = {
-        ...item,
-        InTime: newInTime,
-        OutTime: newOutTime,
-        LateMinute: newLateMins,
-        WorkingHour: newWorkHrs,
-        Overtime: newOvertimeHrs,
-        IsInEdited: isInEdited || item.IsInEdited,
-        IsOutEdited: isOutEdited || item.IsOutEdited,
-        Status: newLateMins > 0 ? 'Late' : 'Present'
-      };
+      const { data, error } = await query;
 
-      const newData = [...attendanceData];
-      const dataIndex = attendanceData.findIndex(d => d.EmployeeID === item.EmployeeID && d.Date === item.Date);
-      if (dataIndex !== -1) {
-        newData[dataIndex] = updatedItem;
-        setAttendanceData(newData);
-      }
+      if (error) throw error;
 
-      const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz009j6fH3ADRbVJYJGt2QnXu6si3isPR3CHvtv06W7DOEret6CEiJWc_PbDcKY5SSs/exec';
-      const SPECIFIED_SPREADSHEET_ID = '1lg8cvRaYHpnR75bWxHoh-a30-gGL94-_WAnE7Zue6r8';
+      setAttendanceData(data || []);
 
-      const rowData = [
-        updatedItem.EmployeeID,
-        updatedItem.EmployeeName,
-        updatedItem.Date,
-        formatTime12h(updatedItem.InTime),
-        formatTime12h(updatedItem.OutTime),
-        updatedItem.WorkingHour,
-        updatedItem.StoreName,
-        'MANUAL_EDIT'
-      ];
+      // Extract unique employees
+      const uniqueEmployees = [...new Map(data.map(item => [item.employee_id, {
+        id: item.employee_id,
+        name: item.employee_name,
+        designation: item.designation,
+        store_name: item.store_name
+      }])).values()];
 
-      await fetch(SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          sheetName: 'Formatted_Attendance',
-          spreadsheetId: SPECIFIED_SPREADSHEET_ID,
-          action: 'insert',
-          rowData: JSON.stringify(rowData)
-        })
-      });
-
-      setEditingId(null);
-      alert('Attendance updated successfully!');
+      setEmployees(uniqueEmployees);
     } catch (err) {
-      console.error('Save failed:', err);
-      alert('Error saving changes');
+      console.error('Error fetching from Supabase:', err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchDeviceLogs = async () => {
+  // Sync device logs
+  const syncDeviceLogs = async () => {
     setLoading(true);
     setError(null);
 
@@ -362,10 +384,12 @@ const AttendanceDaily = () => {
         setDeviceMapping(currentMapping);
       }
 
-      const queryStart = startDate || '2026-04-01';
-      const queryEnd = endDate || '2026-04-30';
+      const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+      const queryStart = getLocalDateString(startOfMonth);
+      const queryEnd = getLocalDateString(endOfMonth);
 
-      let rawLogs = [];
+      let rawLogsData = [];
       if (selectedDevice.name === 'ALL DEVICES') {
         const otherDevices = DEVICES.filter(d => d.name !== 'ALL DEVICES');
         const allResponses = await Promise.all(
@@ -382,24 +406,25 @@ const AttendanceDaily = () => {
             }
           })
         );
-        rawLogs = allResponses.flat();
+        rawLogsData = allResponses.flat();
       } else {
         const API_URL = `/api/device-logs?APIKey=211616032630&SerialNumber=${selectedDevice.serial}&DeviceName=${selectedDevice.apiName}&FromDate=${queryStart}&ToDate=${queryEnd}`;
         const response = await fetch(API_URL);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
-        rawLogs = Array.isArray(data) ? data.map(l => ({ ...l, _DeviceName: selectedDevice.name })) : [];
+        rawLogsData = Array.isArray(data) ? data.map(l => ({ ...l, _DeviceName: selectedDevice.name })) : [];
       }
 
-      if (!rawLogs || rawLogs.length === 0) {
+      if (!rawLogsData || rawLogsData.length === 0) {
         setAttendanceData([]);
+        setLoading(false);
         return;
       }
 
-      const filteredLogs = rawLogs.filter(log => {
+      const filteredLogs = rawLogsData.filter(log => {
         if (!log.LogDate) return false;
         const logDateStr = log.LogDate.split(' ')[0];
-        return logDateStr >= '2026-04-01';
+        return logDateStr >= queryStart && logDateStr <= queryEnd;
       });
 
       filteredLogs.sort((a, b) => new Date(a.LogDate) - new Date(b.LogDate));
@@ -426,8 +451,6 @@ const AttendanceDaily = () => {
         const logs = group.logs;
         let inTime = '-';
         let outTime = '-';
-        let lunchOut = '-';
-        let lunchIn = '-';
         let punchMiss = 'No';
         let punchMissMsg = '';
 
@@ -447,12 +470,6 @@ const AttendanceDaily = () => {
         } else {
           inTime = logs[0];
           outTime = logs[logs.length - 1];
-          if (logs.length >= 4) {
-            lunchOut = logs[1];
-            lunchIn = logs[2];
-          } else if (logs.length === 3) {
-            lunchOut = logs[1];
-          }
         }
 
         const serial = group.SerialNumber.toString().trim();
@@ -478,8 +495,7 @@ const AttendanceDaily = () => {
         const displayAssignedSerial = dMap ? dMap.serialNo : serial;
 
         const lateMins = calculateLateMinutes(inTime);
-        const workHrs = punchMiss === 'Yes' ? '0h 0m' : calculateWorkHours(inTime, outTime);
-        const overtimeHrs = calculateOvertime(workHrs);
+        const workHrs = punchMiss === 'Yes' ? '00:00:00' : calculateWorkHours(inTime, outTime);
 
         let actualLunchMs = 0;
         if (logs.length > 2) {
@@ -496,10 +512,10 @@ const AttendanceDaily = () => {
 
         const dateObj = new Date(group.Date);
         const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(dateObj);
-        const isWorkingDay = 'Yes';
 
         let status = 'Present';
         if (lateMins > 0) status = 'Late';
+        if (punchMiss === 'Yes') status = 'Absent';
 
         const punchLogStr = logs.map(l => formatTime12h(l)).join(' | ');
 
@@ -524,7 +540,7 @@ const AttendanceDaily = () => {
           EmployeeName: displayName,
           Date: group.Date,
           Day: dayName,
-          IsWorkingDay: isWorkingDay,
+          IsWorkingDay: 'Yes',
           InTime: inTime,
           StandardLunch: calculateHoursMins(displayLunchMs),
           WasteTime: calculateHoursMins(wasteTimeMs),
@@ -538,15 +554,20 @@ const AttendanceDaily = () => {
           AssignedSerial: displayAssignedSerial,
           Status: status,
           WorkingHour: workHrs,
-          Overtime: overtimeHrs,
+          Overtime: '0h 0m',
           LateMinute: lateMins,
           PunchMiss: punchMiss,
           PunchMissMsg: punchMissMsg
         };
       });
 
-      aggregatedData.sort((a, b) => new Date(b.InTime) - new Date(a.InTime));
-      setAttendanceData(aggregatedData);
+      const changedRows = await saveAttendanceToDB(aggregatedData);
+
+      if (changedRows && changedRows.length > 0) {
+        await syncToMachineDataSheet(changedRows);
+      }
+
+      await fetchAttendanceFromDB();
 
       const processedRawLogs = filteredLogs.map(log => {
         const code = log.EmployeeCode.toString().trim();
@@ -564,8 +585,6 @@ const AttendanceDaily = () => {
         const displayName = dMap ? dMap.name : (empMeta ? empMeta.name : (isNaN(code) ? code : 'Unknown'));
         const displayCode = dMap ? dMap.userId : (empMeta ? empMeta.id : (isNaN(code) ? 'Unknown' : code));
         const displayStore = dMap ? dMap.storeName : (empMeta ? empMeta.store : log._DeviceName);
-        const displayDeviceId = dMap ? dMap.deviceId : '-';
-        const displayAssignedSerial = dMap ? dMap.serialNo : log.SerialNumber;
 
         const dateObj = new Date(log.LogDate.replace(/-/g, '/'));
 
@@ -576,14 +595,11 @@ const AttendanceDaily = () => {
           employeeId: displayCode,
           employeeName: displayName,
           storeName: displayStore,
-          deviceId: displayDeviceId,
-          serialNo: displayAssignedSerial
+          serialNo: log.SerialNumber
         };
       });
 
       setRawLogs(processedRawLogs);
-
-      syncToMachineDataSheet(aggregatedData);
     } catch (error) {
       console.error('Error fetching data:', error);
       setError(error.message);
@@ -592,115 +608,350 @@ const AttendanceDaily = () => {
     }
   };
 
-  useEffect(() => {
-    fetchDeviceLogs();
-  }, [startDate, endDate, selectedDevice]);
+  // Update attendance status
+  const updateAttendanceStatus = async (employeeId, date, newStatus, inTime, outTime) => {
+    try {
+      const existingRecord = attendanceData.find(
+        a => a.employee_id === employeeId && a.attendance_date === date
+      );
 
-  const filteredData = attendanceData.filter(item => {
-    const matchesSearch =
-      (item.EmployeeID && item.EmployeeID.toString().toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.EmployeeName && item.EmployeeName.toString().toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.SerialNumber && item.SerialNumber.toString().toLowerCase().includes(searchTerm.toLowerCase()));
+      const updateData = {
+        status: newStatus,
+        updated_at: new Date()
+      };
 
-    return matchesSearch;
-  });
+      if (inTime !== undefined) updateData.in_time = inTime ? new Date(inTime.replace(/-/g, '/')) : null;
+      if (outTime !== undefined) updateData.out_time = outTime ? new Date(outTime.replace(/-/g, '/')) : null;
 
-  const filteredRawLogs = rawLogs.filter(log => {
-    const matchesGeneral = log.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.employeeId.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.serialNo.toString().toLowerCase().includes(searchTerm.toLowerCase());
+      if (inTime || outTime) {
+        if (inTime && outTime && inTime !== '-' && outTime !== '-') {
+          updateData.working_hour = calculateWorkHours(inTime, outTime, date);
+          updateData.late_minute = calculateLateMinutes(inTime, date);
+        }
+      }
 
-    const matchesId = !rawSearchId || log.employeeId.toString() === rawSearchId;
-    const matchesStore = !rawSearchStore || log.storeName === rawSearchStore;
+      let result;
+      if (existingRecord) {
+        const { data, error } = await supabase
+          .from('attendance_logs')
+          .update(updateData)
+          .eq('employee_id', employeeId)
+          .eq('attendance_date', date)
+          .select();
 
-    return matchesGeneral && matchesId && matchesStore;
-  });
+        if (error) throw error;
+        result = data;
+      } else {
+        const employee = employees.find(e => e.id === employeeId);
+        const { data, error } = await supabase
+          .from('attendance_logs')
+          .insert({
+            employee_id: employeeId,
+            employee_name: employee?.name || '',
+            attendance_date: date,
+            status: newStatus,
+            ...updateData
+          })
+          .select();
 
-  const uniqueIds = [...new Set(rawLogs.map(l => l.employeeId))].filter(Boolean).sort();
-  const uniqueStores = [...new Set(rawLogs.map(l => l.storeName))].filter(Boolean).sort();
+        if (error) throw error;
+        result = data;
+      }
 
-  const downloadExcel = () => {
-    const dataToExport = filteredData.map((item, index) => ({
-      'S.No.': index + 1,
-      'Date': item.Date,
-      'Day': item.Day,
-      'Working Day': item.IsWorkingDay,
-      'Employee ID': item.EmployeeID,
-      'Employee Name': item.EmployeeName,
-      'Designation': item.Designation,
-      'IN Time': formatTime12h(item.InTime),
-      'Lunch Time': item.StandardLunch,
-      'Waste Time': item.WasteTime,
-      'OUT Time': formatTime12h(item.OutTime),
-      'Punch Logs': item.PunchLog,
-      'Punch Log Status': item.PunchLogStatus,
-      'Status': item.Status,
-      'Working Hour': item.WorkingHour,
-      'Late Minute': item.LateMinute,
-      'Punch Miss': item.PunchMiss,
-      'Store Name': item.StoreName,
-      'Device ID': item.DeviceID,
-      'Serial NO': item.AssignedSerial
-    }));
+      await fetchAttendanceFromDB();
 
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Device Logs");
-    XLSX.writeFile(workbook, `device_logs_${startDate || 'all'}_to_${endDate || 'all'}.xlsx`);
+      const changedRow = result?.map(r => ({
+        employee_id: r.employee_id,
+        employee_name: r.employee_name,
+        attendance_date: r.attendance_date,
+        in_time: r.in_time,
+        out_time: r.out_time,
+        working_hour: r.working_hour,
+        store_name: r.store_name
+      }));
+
+      if (changedRow) {
+        await syncToMachineDataSheet(changedRow);
+      }
+
+      setEditingCell(null);
+      setSelectedCell(null);
+      alert('Attendance updated successfully!');
+    } catch (err) {
+      console.error('Update failed:', err);
+      alert('Error updating attendance: ' + err.message);
+    }
   };
 
-  // Summary stats
-  const totalEmployees = new Set(attendanceData.map(d => d.EmployeeID)).size;
-  const totalPresent = attendanceData.filter(d => d.Status === 'Present').length;
-  const totalLate = attendanceData.filter(d => d.Status === 'Late').length;
+  // Handle cell click for editing
+  const handleCellClick = (employeeId, date, status, inTime, outTime) => {
+    setSelectedCell({ employeeId, date });
+    setTempStatus(status);
+
+    const formatInputVal = (t) => {
+      if (!t || t === '-') return '';
+      try {
+        const d = new Date(t);
+        if (isNaN(d.getTime())) return '';
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+      } catch (e) {
+        return '';
+      }
+    };
+
+    setTempInTime(formatInputVal(inTime));
+    setTempOutTime(formatInputVal(outTime));
+  };
+
+  // Handle save from modal
+  const handleSaveFromModal = () => {
+    if (selectedCell) {
+      updateAttendanceStatus(
+        selectedCell.employeeId,
+        selectedCell.date,
+        tempStatus,
+        tempInTime,
+        tempOutTime
+      );
+    }
+  };
+
+  // Get days in month
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const days = [];
+
+    for (let i = 1; i <= lastDay.getDate(); i++) {
+      const currentDate = new Date(year, month, i);
+      days.push({
+        date: i,
+        dayOfWeek: currentDate.getDay(),
+        fullDate: getLocalDateString(currentDate),
+        isWeekend: currentDate.getDay() === 0 || currentDate.getDay() === 6
+      });
+    }
+
+    return days;
+  };
+
+  // Get attendance status for an employee on a specific date
+  const getAttendanceForDate = (employeeId, date) => {
+    const record = attendanceData.find(
+      a => a.employee_id === employeeId && a.attendance_date === date
+    );
+    if (record) return record;
+    if (date > todayDate) {
+      return { status: 'Future', in_time: '-', out_time: '-' };
+    }
+    return { status: 'Absent', in_time: '-', out_time: '-' };
+  };
+
+  // Change month
+  const changeMonth = (delta) => {
+    const nextMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + delta, 1);
+    setCurrentMonth(nextMonth);
+
+    const currentSelected = new Date(selectedDate);
+    const day = currentSelected.getDate();
+    const lastDayOfNext = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate();
+    const targetDay = Math.min(day, lastDayOfNext);
+    const nextDate = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), targetDay);
+
+    const yyyy = nextDate.getFullYear();
+    const mm = String(nextDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(nextDate.getDate()).padStart(2, '0');
+    setSelectedDate(`${yyyy}-${mm}-${dd}`);
+  };
+
+  // Unique store names list
+  const stores = [...new Set(employees.map(emp => emp.store_name).filter(Boolean))].sort();
+
+  // Filter employees
+  const filteredEmployees = employees.filter(emp => {
+    const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         emp.id?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStore = selectedStore === 'ALL' || emp.store_name === selectedStore;
+    return matchesSearch && matchesStore;
+  });
+
+  const days = getDaysInMonth(currentMonth);
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  useEffect(() => {
+    fetchAttendanceFromDB();
+  }, [currentMonth]);
+
+  // Download Excel
+  const downloadExcel = () => {
+    const exportData = [];
+
+    if (viewMode === 'daily') {
+      filteredEmployees.forEach(employee => {
+        const attendance = getAttendanceForDate(employee.id, selectedDate);
+        const dateObj = new Date(selectedDate);
+        exportData.push({
+          'Employee ID': employee.id,
+          'Employee Name': employee.name,
+          'Designation': employee.designation,
+          'Store': employee.store_name,
+          'Date': selectedDate,
+          'Day': dateObj.toLocaleDateString('en-US', { weekday: 'long' }),
+          'Status': attendance.status === 'Future' ? '' : attendance.status,
+          'IN Time': formatTime12h(attendance.in_time),
+          'OUT Time': formatTime12h(attendance.out_time),
+          'Working Hours': attendance.working_hour || '-',
+          'Late Minutes': attendance.late_minute || 0,
+          'Standard Lunch': attendance.standard_lunch || '-',
+          'Waste Time': attendance.waste_time || '-',
+          'Punch Log': attendance.punch_log || '-'
+        });
+      });
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, `Daily_Attendance_${selectedDate}`);
+      XLSX.writeFile(workbook, `attendance_daily_${selectedDate}.xlsx`);
+    } else {
+      filteredEmployees.forEach(employee => {
+        days.forEach(day => {
+          const attendance = getAttendanceForDate(employee.id, day.fullDate);
+          exportData.push({
+            'Employee ID': employee.id,
+            'Employee Name': employee.name,
+            'Designation': employee.designation,
+            'Store': employee.store_name,
+            'Date': day.fullDate,
+            'Day': new Date(day.fullDate).toLocaleDateString('en-US', { weekday: 'long' }),
+            'Status': attendance.status === 'Future' ? '' : attendance.status,
+            'IN Time': formatTime12h(attendance.in_time),
+            'OUT Time': formatTime12h(attendance.out_time),
+            'Working Hours': attendance.working_hour || '-',
+            'Late Minutes': attendance.late_minute || 0
+          });
+        });
+      });
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, `Attendance_${monthNames[currentMonth.getMonth()]}_${currentMonth.getFullYear()}`);
+      XLSX.writeFile(workbook, `attendance_${currentMonth.getFullYear()}_${currentMonth.getMonth() + 1}.xlsx`);
+    }
+  };
 
   return (
-    <div className="p-5  pt-2">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-3">
+      {/* Header - Compact */}
+      <div className="flex justify-between items-center mb-3">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <Clock size={28} />
-            Daily Attendance
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+            <Calendar size={18} />
+            {viewMode === 'calendar' ? 'Daily Attendance Calendar' : 'Daily Attendance Sheet'}
           </h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Track and manage daily employee attendance logs
+          <p className="text-gray-500 text-[11px] mt-0.5">
+            {viewMode === 'calendar'
+              ? 'View and manage employee attendance in calendar format'
+              : `View and manage employee attendance for ${new Date(selectedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}`}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2">
+          <button
+            onClick={syncDeviceLogs}
+            disabled={loading || syncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-medium text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw size={12} className={loading || syncing ? 'animate-spin' : ''} />
+            Sync Logs
+          </button>
           {syncing && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg">
-              <Loader2 size={14} className="text-indigo-600 animate-spin" />
-              <span className="text-xs text-indigo-600 font-medium">
-                Syncing... {syncProgress}%
+            <div className="flex items-center gap-1.5 px-2 py-1.5 bg-indigo-50 border border-indigo-200 rounded-md">
+              <Loader2 size={10} className="text-indigo-600 animate-spin" />
+              <span className="text-[10px] text-indigo-600 font-medium">
+                {syncProgress}%
               </span>
             </div>
           )}
           <button
             onClick={downloadExcel}
-            disabled={filteredData.length === 0}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium text-sm transition-colors ${filteredData.length === 0
+            disabled={filteredEmployees.length === 0}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-medium text-xs transition-colors ${filteredEmployees.length === 0
               ? 'bg-gray-400 cursor-not-allowed'
               : 'bg-green-600 hover:bg-green-700'
               }`}
           >
-            <Download size={16} />
-            Export Excel
+            <Download size={12} />
+            Export
           </button>
         </div>
       </div>
 
-      {/* Filter Section */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* View Toggle - Compact */}
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-3 bg-white p-2 rounded-md border border-gray-200 shadow-sm">
+        <div className="flex bg-gray-100 p-0.5 rounded-md">
+          <button
+            onClick={() => setViewMode('calendar')}
+            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-all ${viewMode === 'calendar'
+              ? 'bg-white text-indigo-600 shadow'
+              : 'text-gray-600 hover:text-gray-900'
+              }`}
+          >
+            <Calendar size={12} />
+            Calendar
+          </button>
+          <button
+            onClick={() => setViewMode('daily')}
+            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-all ${viewMode === 'daily'
+              ? 'bg-white text-indigo-600 shadow'
+              : 'text-gray-600 hover:text-gray-900'
+              }`}
+          >
+            <Clock size={12} />
+            Daily List
+          </button>
+        </div>
+
+        {viewMode === 'daily' && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Date:</span>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Status Legend - Compact */}
+      <div className="bg-white rounded-md border border-gray-200 p-2 mb-3">
+        <div className="flex flex-wrap gap-3">
+          <span className="text-[11px] font-medium text-gray-700">Status:</span>
+          {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+            <div key={key} className="flex items-center gap-1">
+              <div className={`w-3 h-3 rounded ${config.bgColor} border`}></div>
+              <span className="text-[10px] text-gray-600">{config.fullLabel}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Filter Section - Compact */}
+      <div className="bg-white rounded-md border border-gray-200 p-2 mb-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Search Employee</label>
+            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Search Employee</label>
             <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by name, ID or serial..."
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                placeholder="Search..."
+                className="w-full pl-7 pr-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -708,316 +959,325 @@ const AttendanceDaily = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Select Device</label>
+            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Filter by Store</label>
             <div className="relative">
               <select
-                value={selectedDevice.name}
-                onChange={(e) => {
-                  const device = DEVICES.find(d => d.name === e.target.value);
-                  setSelectedDevice(device);
-                }}
-                className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white"
+                value={selectedStore}
+                onChange={(e) => setSelectedStore(e.target.value)}
+                className="w-full appearance-none pl-2 pr-6 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs bg-white font-medium text-gray-700"
               >
-                {DEVICES.map(d => (
-                  <option key={d.name} value={d.name}>{d.name}</option>
+                <option value="ALL">All Stores</option>
+                {stores.map(store => (
+                  <option key={store} value={store}>{store}</option>
                 ))}
               </select>
-              <Filter size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <Filter size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Start Date</label>
-            <input
-              type="date"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">End Date</label>
-            <input
-              type="date"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
+          <div className='ml-10'>
+            <label className="block w-[13vw] text-[10px] font-medium text-gray-500 mb-0.5 text-center">Month</label>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => changeMonth(-1)}
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-xs font-semibold text-gray-800 min-w-[140px] text-center">
+                {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+              </span>
+              <button
+                onClick={() => changeMonth(1)}
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      {attendanceData.length > 0 && !loading && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
+      {viewMode === 'calendar' ? (
+        /* Calendar View - Compact */
+        <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)]">
+            <table className="w-full text-xs relative border-collapse">
+              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20 shadow-sm">
+                <tr>
+                  <th className="sticky top-0 left-0 bg-gray-50 px-2 py-1.5 font-medium text-gray-600 text-[10px] z-30 min-w-[80px] border-r">
+                    Employee
+                  </th>
+                  {days.map((day, idx) => (
+                    <th key={idx} className={`sticky top-0 bg-gray-50 px-0.5 py-1.5 font-medium text-center text-[10px] min-w-[32px] ${day.isWeekend ? 'bg-red-50' : ''} z-10`}>
+                      <div className="font-semibold text-gray-700">{day.date}</div>
+                      <div className="text-gray-400 text-[8px] mt-0.5">
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day.dayOfWeek]}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={days.length + 2} className="text-center py-6">
+                      <div className="flex items-center justify-center gap-1 text-gray-500 text-xs">
+                        <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                        Loading...
+                      </div>
+                    </td>
+                  </tr>
+                ) : error ? (
+                  <tr>
+                    <td colSpan={days.length + 2} className="text-center py-6">
+                      <p className="text-red-600 text-xs mb-2">{error}</p>
+                      <button
+                        onClick={syncDeviceLogs}
+                        className="px-3 py-1 bg-indigo-600 text-white rounded text-xs"
+                      >
+                        Retry
+                      </button>
+                    </td>
+                  </tr>
+                ) : filteredEmployees.length > 0 ? (
+                  filteredEmployees.map((employee) => {
+                    let presentCount = 0, lateCount = 0, absentCount = 0, halfDayCount = 0;
+
+                    return (
+                      <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="sticky left-0 bg-white px-2 py-1.5 border-r z-10">
+                          <div>
+                            <p className="text-xs font-medium text-gray-900">{employee.name}</p>
+                            <p className="text-[9px] text-gray-500">{employee.id}</p>
+                          </div>
+                        </td>
+                        {days.map((day, idx) => {
+                          const attendance = getAttendanceForDate(employee.id, day.fullDate);
+                          const status = attendance.status || 'Absent';
+                          const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
+
+                          if (status === 'Present') presentCount++;
+                          else if (status === 'Late') lateCount++;
+                          else if (status === 'Absent') absentCount++;
+                          else if (status === 'Half Day') halfDayCount++;
+
+                          return (
+                            <td
+                              key={idx}
+                              className={`px-0.5 py-1 text-center cursor-pointer transition-all hover:opacity-80 ${day.isWeekend ? 'bg-gray-50' : ''}`}
+                              onClick={() => handleCellClick(employee.id, day.fullDate, status, attendance.in_time, attendance.out_time)}
+                            >
+                              <div className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${config.color} font-medium text-[10px] transition-transform hover:scale-105`}>
+                                {config.label}
+                              </div>
+                              {attendance.late_minute > 0 && (
+                                <div className="text-[8px] text-gray-400 mt-0.5">
+                                  {attendance.late_minute}m
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={days.length + 2} className="text-center py-8">
+                      <div className="flex flex-col items-center justify-center text-gray-400">
+                        <Users size={32} className="mb-2" />
+                        <p className="text-xs font-medium">No employees found</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Daily List View - Compact */
+        <div className="bg-white rounded-md border border-gray-200 overflow-hidden shadow-sm">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)]">
+            <table className="w-full text-xs relative border-collapse">
+              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
+                <tr>
+                  <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[40px] z-10">#</th>
+                  <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-[140px] z-10">Employee</th>
+                  <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[100px] z-10">Store</th>
+                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[80px] z-10">Status</th>
+                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">In Time</th>
+                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">Out Time</th>
+                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[70px] z-10">Hours</th>
+                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[60px] z-10">Late</th>
+                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[50px] z-10">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={9} className="text-center py-6">
+                      <div className="flex items-center justify-center gap-1 text-gray-500 text-xs">
+                        <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                        Loading...
+                      </div>
+                    </td>
+                  </tr>
+                ) : error ? (
+                  <tr>
+                    <td colSpan={9} className="text-center py-6">
+                      <p className="text-red-600 text-xs mb-2">{error}</p>
+                      <button onClick={syncDeviceLogs} className="px-3 py-1 bg-indigo-600 text-white rounded text-xs">Retry</button>
+                    </td>
+                  </tr>
+                ) : filteredEmployees.length > 0 ? (
+                  filteredEmployees.map((employee, idx) => {
+                    const attendance = getAttendanceForDate(employee.id, selectedDate);
+                    const status = attendance.status || 'Absent';
+                    const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
+
+                    return (
+                      <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-2 py-1.5 text-[10px] text-gray-500 font-medium">{idx + 1}</td>
+                        <td className="px-2 py-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
+                              {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-gray-900">{employee.name}</p>
+                              <p className="text-[9px] text-gray-500">{employee.id}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-2 py-1.5 text-[10px] text-gray-600">{employee.store_name || '-'}</td>
+                        <td className="px-2 py-1.5 text-center">
+                          <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-medium ${config.color} ${config.bgColor}`}>
+                            {config.fullLabel}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-center text-[10px] font-mono">{formatTime12h(attendance.in_time)}</td>
+                        <td className="px-2 py-1.5 text-center text-[10px] font-mono">{formatTime12h(attendance.out_time)}</td>
+                        <td className="px-2 py-1.5 text-center text-[10px] font-semibold">{attendance.working_hour || '-'}</td>
+                        <td className="px-2 py-1.5 text-center text-[10px]">
+                          {attendance.late_minute > 0 ? (
+                            <span className="text-orange-600">{attendance.late_minute}m</span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          <button
+                            onClick={() => handleCellClick(employee.id, selectedDate, status, attendance.in_time, attendance.out_time)}
+                            className="p-1 hover:bg-indigo-50 text-indigo-600 rounded transition-colors"
+                          >
+                            <Pencil size={10} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={9} className="text-center py-8">
+                      <div className="flex flex-col items-center justify-center text-gray-400">
+                        <Users size={32} className="mb-2" />
+                        <p className="text-xs font-medium">No employees found</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal - Compact */}
+      {selectedCell && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-md shadow-xl max-w-md w-full mx-4">
+            <div className="flex justify-between items-center p-3 border-b">
+              <h3 className="text-sm font-semibold text-gray-900">Edit Attendance</h3>
+              <button onClick={() => { setSelectedCell(null); setEditingCell(null); }} className="text-gray-400 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-3 space-y-3">
               <div>
-                <p className="text-xs font-medium text-gray-500">Total Employees</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{totalEmployees}</p>
+                <label className="block text-xs font-medium text-gray-700 mb-0.5">Status</label>
+                <select
+                  value={tempStatus}
+                  onChange={(e) => setTempStatus(e.target.value)}
+                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                    <option key={key} value={key}>{config.fullLabel}</option>
+                  ))}
+                </select>
               </div>
-              <div className="p-2 bg-indigo-50 rounded-lg">
-                <Users size={20} className="text-indigo-600" />
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-0.5">IN Time</label>
+                <input
+                  type="datetime-local"
+                  value={tempInTime}
+                  onChange={(e) => setTempInTime(e.target.value)}
+                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-0.5">OUT Time</label>
+                <input
+                  type="datetime-local"
+                  value={tempOutTime}
+                  onChange={(e) => setTempOutTime(e.target.value)}
+                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
               </div>
             </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500">Total Records</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{attendanceData.length}</p>
-              </div>
-              <div className="p-2 bg-blue-50 rounded-lg">
-                <Database size={20} className="text-blue-600" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500">Present Today</p>
-                <p className="text-2xl font-bold text-green-600 mt-1">{totalPresent}</p>
-              </div>
-              <div className="p-2 bg-green-50 rounded-lg">
-                <User size={20} className="text-green-600" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500">Late Arrivals</p>
-                <p className="text-2xl font-bold text-orange-600 mt-1">{totalLate}</p>
-              </div>
-              <div className="p-2 bg-orange-50 rounded-lg">
-                <TrendingUp size={20} className="text-orange-600" />
-              </div>
+            <div className="flex justify-end gap-2 p-3 border-t">
+              <button onClick={() => { setSelectedCell(null); setEditingCell(null); }} className="px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 rounded transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleSaveFromModal} className="px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors">
+                Save
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Main Attendance Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-8">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">S.No.</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Date</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Day</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Employee</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">IN Time</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">OUT Time</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Work Hours</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Store</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading ? (
-                <tr>
-                  <td colSpan="10" className="text-center py-12">
-                    <div className="flex items-center justify-center gap-2 text-gray-500">
-                      <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                      Loading attendance data...
-                    </div>
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan="10" className="text-center py-12">
-                    <p className="text-red-600 mb-3">{error}</p>
-                    <button
-                      onClick={fetchDeviceLogs}
-                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
-                    >
-                      Retry
-                    </button>
-                  </td>
-                </tr>
-              ) : filteredData.length > 0 ? (
-                filteredData.map((item, index) => (
-                  <tr key={index} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-xs text-gray-500">{index + 1}</td>
-                    <td className="px-4 py-3 text-xs font-medium text-gray-700">{item.Date}</td>
-                    <td className="px-4 py-3 text-xs text-gray-600">{item.Day}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-medium">
-                          {item.EmployeeName?.charAt(0) || '?'}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{item.EmployeeName}</p>
-                          <p className="text-xs text-gray-500">{item.EmployeeID}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {editingId === `${item.EmployeeID}_${item.Date}` ? (
-                        <input
-                          type="text"
-                          className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
-                          value={tempInTime}
-                          onChange={(e) => setTempInTime(e.target.value)}
-                        />
-                      ) : (
-                        <span className="text-xs font-mono text-indigo-600 font-medium">
-                          {formatTime12h(item.InTime)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {editingId === `${item.EmployeeID}_${item.Date}` ? (
-                        <input
-                          type="text"
-                          className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
-                          value={tempOutTime}
-                          onChange={(e) => setTempOutTime(e.target.value)}
-                        />
-                      ) : (
-                        <span className="text-xs font-mono text-red-600 font-medium">
-                          {formatTime12h(item.OutTime)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs font-semibold text-gray-700">{item.WorkingHour}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${item.Status === 'Present' ? 'bg-green-100 text-green-700' :
-                        item.Status === 'Late' ? 'bg-orange-100 text-orange-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                        {item.Status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">{item.StoreName || '-'}</td>
-                    <td className="px-4 py-3">
-                      {editingId === `${item.EmployeeID}_${item.Date}` ? (
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => handleSaveEdit(item)}
-                            className="p-1 text-green-600 hover:text-green-700"
-                            title="Save"
-                          >
-                            <CheckCircle size={16} />
-                          </button>
-                          <button
-                            onClick={handleCancelEdit}
-                            className="p-1 text-red-600 hover:text-red-700"
-                            title="Cancel"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => handleStartEdit(item)}
-                          className="p-1 text-indigo-600 hover:text-indigo-700"
-                          title="Edit Time"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="10" className="text-center py-12">
-                    <div className="flex flex-col items-center justify-center text-gray-400">
-                      <Search size={48} className="mb-3" />
-                      <p className="font-medium">No attendance records found</p>
-                      <p className="text-xs mt-1">Try adjusting your filters or sync data</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Raw Punches Section */}
+      {/* Raw Punches Section - Compact */}
       {rawLogs.length > 0 && (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Raw Punch Logs</h2>
-            <div className="flex gap-2">
-              <div className="relative">
-                <input
-                  list="rawIds"
-                  placeholder="Filter by ID..."
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  value={rawSearchId}
-                  onChange={(e) => setRawSearchId(e.target.value)}
-                />
-                <datalist id="rawIds">
-                  {uniqueIds.map(id => <option key={id} value={id} />)}
-                </datalist>
-              </div>
-              <div className="relative">
-                <input
-                  list="rawStores"
-                  placeholder="Filter by store..."
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  value={rawSearchStore}
-                  onChange={(e) => setRawSearchStore(e.target.value)}
-                />
-                <datalist id="rawStores">
-                  {uniqueStores.map(store => <option key={store} value={store} />)}
-                </datalist>
-              </div>
-              {(rawSearchId || rawSearchStore) && (
-                <button
-                  onClick={() => { setRawSearchId(''); setRawSearchStore(''); }}
-                  className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto max-h-96">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+        <div className="mt-3">
+          <details className="bg-white rounded-md border border-gray-200">
+            <summary className="px-2 py-1.5 cursor-pointer hover:bg-gray-50 text-xs font-medium text-gray-700">
+              Raw Punch Logs ({rawLogs.length})
+            </summary>
+            <div className="overflow-x-auto p-2 border-t">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Date</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Day</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Time</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Employee</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Store</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Device</th>
+                    <th className="text-left px-2 py-1 text-[10px] text-gray-600">Date</th>
+                    <th className="text-left px-2 py-1 text-[10px] text-gray-600">Day</th>
+                    <th className="text-left px-2 py-1 text-[10px] text-gray-600">Time</th>
+                    <th className="text-left px-2 py-1 text-[10px] text-gray-600">Employee</th>
+                    <th className="text-left px-2 py-1 text-[10px] text-gray-600">Store</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredRawLogs.map((log, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-2 text-xs text-gray-700">{log.date}</td>
-                      <td className="px-4 py-2 text-xs text-gray-500">{log.day}</td>
-                      <td className="px-4 py-2 text-xs font-mono font-medium text-indigo-600">{formatTime12h(log.time)}</td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs font-medium">
-                            {log.employeeName?.charAt(0) || '?'}
-                          </div>
-                          <span className="text-xs font-medium text-gray-900">{log.employeeName}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 text-xs text-gray-600">{log.storeName}</td>
-                      <td className="px-4 py-2 text-xs font-mono text-gray-500">{log.serialNo}</td>
+                  {rawLogs.slice(0, 50).map((log, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="px-2 py-1 text-[10px] text-gray-700">{log.date}</td>
+                      <td className="px-2 py-1 text-[10px] text-gray-500">{log.day}</td>
+                      <td className="px-2 py-1 text-[10px] font-mono font-medium text-indigo-600">{formatTime12h(log.time)}</td>
+                      <td className="px-2 py-1 text-[10px] text-gray-900">{log.employeeName}</td>
+                      <td className="px-2 py-1 text-[10px] text-gray-600">{log.storeName}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
+          </details>
         </div>
       )}
     </div>
