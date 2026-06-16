@@ -3,12 +3,13 @@ import { useState, useEffect } from 'react'
 import {
   LogOut, LayoutDashboard, Users, Calendar, Clock,
   DollarSign, BarChart3, Wallet, ChevronDown, ChevronRight,
-  Menu
+  Menu, Building2
 } from 'lucide-react'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, id: 'nav-dashboard' },
   { to: '/employees', label: 'Employees', icon: Users, id: 'nav-employees' },
+  { to: '/joining-company', label: 'Joining Companies', icon: Building2, id: 'joining-company' },
   { to: '/leave', label: 'Leave Management', icon: Calendar, id: 'nav-leave' },
   {
     to: '/attendance',
@@ -59,7 +60,7 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
           fixed top-0 left-0 h-full z-30 flex flex-col
           bg-gradient-to-b from-slate-900 to-slate-800
           shadow-2xl transition-all duration-300 ease-in-out
-          ${collapsed ? '-translate-x-full lg:translate-x-0 lg:w-20' : 'translate-x-0 w-64'}
+          ${collapsed ? '-translate-x-full lg:translate-x-0 lg:w-20' : 'translate-x-0 w-60'}
         `}
       >
         {/* Logo */}

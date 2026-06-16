@@ -11,6 +11,8 @@ import AdminAdvance from './pages/AdminAdvance'
 import Login from './pages/Login'
 import { Recruitment, Reports, Settings } from './pages/StubPages'
 import { Toaster } from 'react-hot-toast'
+import PublicRegister from './pages/PublicRegister'
+import JoiningCompany from './pages/JoiningCompany'
 
 function App() {
   const [collapsed, setCollapsed] = useState(false)
@@ -32,6 +34,19 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem('hr_user')
     setUser(null)
+  }
+
+  const isPublicRoute = window.location.pathname === '/register'
+
+  if (isPublicRoute) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/register" element={<PublicRegister />} />
+        </Routes>
+        <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+      </BrowserRouter>
+    )
   }
 
   if (!user) {
@@ -65,6 +80,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/employees" element={<Employees />} />
+              <Route path="/joining-company" element={<JoiningCompany />} />
               <Route path="/attendance" element={<Navigate to="/attendance/daily" replace />} />
               <Route path="/attendance/daily" element={<Attendance />} />
               <Route path="/attendance/monthly" element={<Attendance />} />

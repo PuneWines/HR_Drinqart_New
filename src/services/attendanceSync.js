@@ -30,7 +30,7 @@ const calculateLateMinutes = (timeStr) => {
         const totalMins = h * 60 + m;
         const threshold = 10 * 60 + 10; // 10:10 AM
         const base = 10 * 60 + 0; // 10:00 AM
-        if (totalMins > threshold) return totalMins - base;
+        if (totalMins >= threshold) return totalMins - base;
         return 0;
     } catch (e) { return 0; }
 };

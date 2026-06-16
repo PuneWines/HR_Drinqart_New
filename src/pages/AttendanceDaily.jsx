@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Search, Download, Calendar, Loader2, CheckCircle, X, Clock, Pencil, Filter, Users, User, Clock as ClockIcon, TrendingUp, Database, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Download, Calendar, Loader2, CheckCircle, X, Clock, Pencil, Filter, Users, User, Clock as ClockIcon, TrendingUp, Database, RefreshCw, ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon, Plus } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 
@@ -16,13 +16,13 @@ const JOINING_API_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfX
 
 // Status colors and labels - compact version
 const STATUS_CONFIG = {
-  'Present': { color: 'bg-green-100 text-green-700', label: 'P', fullLabel: 'Present', bgColor: 'bg-green-50' },
-  'Late': { color: 'bg-orange-100 text-orange-700', label: 'L', fullLabel: 'Late', bgColor: 'bg-orange-50' },
-  'Absent': { color: 'bg-red-100 text-red-700', label: 'A', fullLabel: 'Absent', bgColor: 'bg-red-50' },
-  'Half Day': { color: 'bg-yellow-100 text-yellow-700', label: 'H', fullLabel: 'Half Day', bgColor: 'bg-yellow-50' },
-  'Holiday': { color: 'bg-purple-100 text-purple-700', label: 'Hol', fullLabel: 'Holiday', bgColor: 'bg-purple-50' },
-  'Day Off': { color: 'bg-gray-100 text-gray-700', label: 'DO', fullLabel: 'Day Off', bgColor: 'bg-gray-50' },
-  'On Leave': { color: 'bg-blue-100 text-blue-700', label: 'Lv', fullLabel: 'On Leave', bgColor: 'bg-blue-50' },
+  'Present': { color: 'bg-green-100 text-green-700', label: 'P', fullLabel: 'Present', bgColor: 'bg-green-200' },
+  'Late': { color: 'bg-orange-100 text-orange-700', label: 'L', fullLabel: 'Late', bgColor: 'bg-orange-200' },
+  'Absent': { color: 'bg-red-100 text-red-700', label: 'A', fullLabel: 'Absent', bgColor: 'bg-red-200' },
+  'Half Day': { color: 'bg-yellow-100 text-yellow-700', label: 'H', fullLabel: 'Half Day', bgColor: 'bg-yellow-200' },
+  'Holiday': { color: 'bg-purple-100 text-purple-700', label: 'Hol', fullLabel: 'Holiday', bgColor: 'bg-purple-200' },
+  'Day Off': { color: 'bg-gray-100 text-gray-700', label: 'DO', fullLabel: 'Day Off', bgColor: 'bg-gray-200' },
+  'On Leave': { color: 'bg-blue-100 text-blue-700', label: 'Lv', fullLabel: 'On Leave', bgColor: 'bg-blue-200' },
   'Future': { color: 'bg-transparent  border-transparent', label: '-', fullLabel: '', bgColor: 'bg-transparent' }
 };
 
@@ -60,11 +60,20 @@ const AttendanceDaily = () => {
   const [error, setError] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
-  const [selectedCell, setSelectedCell] = useState(null);
+  const [selectedEmployee, setSelectedEmployee] = useState(null); // For slide panel
   const [editingCell, setEditingCell] = useState(null);
   const [tempStatus, setTempStatus] = useState('');
   const [tempInTime, setTempInTime] = useState('');
   const [tempOutTime, setTempOutTime] = useState('');
+  const [isSlidePanelOpen, setIsSlidePanelOpen] = useState(false);
+
+  // Manual attendance marking state
+  const [isMarkModalOpen, setIsMarkModalOpen] = useState(false);
+  const [allEmployees, setAllEmployees] = useState([]);
+  const [markEmployeeId, setMarkEmployeeId] = useState('');
+  const [markStatus, setMarkStatus] = useState('Present');
+  const [markInTime, setMarkInTime] = useState('');
+  const [markOutTime, setMarkOutTime] = useState('');
 
   const formatTime12h = (dateStr) => {
     if (!dateStr || dateStr === '-') return '-';
@@ -89,6 +98,21 @@ const AttendanceDaily = () => {
       const h12 = hours % 12 || 12;
 
       return `${h12}:${minutes.padStart(2, '0')} ${ampm}`;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '-';
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+      return date.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
     } catch (e) {
       return dateStr;
     }
@@ -185,7 +209,7 @@ const AttendanceDaily = () => {
       const officialStartTime = 10 * 60 + 0;
       const graceTimeThreshold = 10 * 60 + 10;
 
-      if (totalMinutes > graceTimeThreshold) {
+      if (totalMinutes >= graceTimeThreshold) {
         return totalMinutes - officialStartTime;
       }
       return 0;
@@ -298,11 +322,11 @@ const AttendanceDaily = () => {
   };
 
   // Fetch attendance from Supabase
-  const fetchAttendanceFromDB = async () => {
+  const fetchAttendanceFromDB = async (targetMonth = currentMonth) => {
     setLoading(true);
     try {
-      const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-      const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+      const startOfMonth = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
+      const endOfMonth = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0);
 
       const startDateStr = getLocalDateString(startOfMonth);
       const endDateStr = getLocalDateString(endOfMonth);
@@ -337,8 +361,59 @@ const AttendanceDaily = () => {
     }
   };
 
-  // Sync device logs
-  const syncDeviceLogs = async () => {
+  const fetchAllEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('employee_id, name_as_per_aadhar, designation, joining_place')
+        .eq('status', 'Active')
+        .order('name_as_per_aadhar');
+
+      if (error) throw error;
+      setAllEmployees(data || []);
+    } catch (err) {
+      console.error('Error fetching employees:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (isMarkModalOpen) {
+      fetchAllEmployees();
+    }
+  }, [isMarkModalOpen]);
+
+  useEffect(() => {
+    if (isMarkModalOpen) {
+      setMarkEmployeeId('');
+      setMarkStatus('Present');
+      setMarkInTime(`${selectedDate}T10:00`);
+      setMarkOutTime(`${selectedDate}T18:00`);
+    }
+  }, [isMarkModalOpen, selectedDate]);
+
+  const handleMarkSubmit = async (e) => {
+    e.preventDefault();
+    if (!markEmployeeId) {
+      alert('Please select an employee');
+      return;
+    }
+
+    try {
+      await updateAttendanceStatus(
+        markEmployeeId,
+        selectedDate,
+        markStatus,
+        markStatus === 'Absent' ? null : markInTime,
+        markStatus === 'Absent' ? null : markOutTime
+      );
+      setIsMarkModalOpen(false);
+    } catch (err) {
+      console.error('Error marking attendance:', err);
+    }
+  };
+
+  // Sync device logs helper for custom date range
+  const syncLogsForRange = async (queryStart, queryEnd, targetMonth = currentMonth) => {
     setLoading(true);
     setError(null);
 
@@ -383,11 +458,6 @@ const AttendanceDaily = () => {
         }));
         setDeviceMapping(currentMapping);
       }
-
-      const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-      const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-      const queryStart = getLocalDateString(startOfMonth);
-      const queryEnd = getLocalDateString(endOfMonth);
 
       let rawLogsData = [];
       if (selectedDevice.name === 'ALL DEVICES') {
@@ -514,8 +584,8 @@ const AttendanceDaily = () => {
         const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(dateObj);
 
         let status = 'Present';
-        if (lateMins > 0) status = 'Late';
         if (punchMiss === 'Yes') status = 'Absent';
+        if (lateMins > 0) status = 'Late';
 
         const punchLogStr = logs.map(l => formatTime12h(l)).join(' | ');
 
@@ -567,7 +637,7 @@ const AttendanceDaily = () => {
         await syncToMachineDataSheet(changedRows);
       }
 
-      await fetchAttendanceFromDB();
+      await fetchAttendanceFromDB(targetMonth);
 
       const processedRawLogs = filteredLogs.map(log => {
         const code = log.EmployeeCode.toString().trim();
@@ -606,6 +676,25 @@ const AttendanceDaily = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Sync device logs
+  const syncDeviceLogs = async () => {
+    const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+    const queryStart = getLocalDateString(startOfMonth);
+    const queryEnd = getLocalDateString(endOfMonth);
+    await syncLogsForRange(queryStart, queryEnd, currentMonth);
+  };
+
+  // Sync only today's logs
+  const syncTodayLogs = async () => {
+    const today = new Date();
+    if (today.getMonth() !== currentMonth.getMonth() || today.getFullYear() !== currentMonth.getFullYear()) {
+      setCurrentMonth(today);
+    }
+    setSelectedDate(todayDate);
+    await syncLogsForRange(todayDate, todayDate, today);
   };
 
   // Update attendance status
@@ -675,7 +764,8 @@ const AttendanceDaily = () => {
       }
 
       setEditingCell(null);
-      setSelectedCell(null);
+      setSelectedEmployee(null);
+      setIsSlidePanelOpen(false);
       alert('Attendance updated successfully!');
     } catch (err) {
       console.error('Update failed:', err);
@@ -683,9 +773,24 @@ const AttendanceDaily = () => {
     }
   };
 
-  // Handle cell click for editing
-  const handleCellClick = (employeeId, date, status, inTime, outTime) => {
-    setSelectedCell({ employeeId, date });
+  // Handle employee selection for slide panel
+  const handleEmployeeSelect = (employee, date, status, inTime, outTime) => {
+    // Get full attendance record
+    const fullRecord = attendanceData.find(
+      a => a.employee_id === employee.id && a.attendance_date === date
+    );
+
+    setSelectedEmployee({
+      ...employee,
+      date: date,
+      attendance: {
+        status: status,
+        in_time: inTime,
+        out_time: outTime,
+        ...fullRecord
+      }
+    });
+
     setTempStatus(status);
 
     const formatInputVal = (t) => {
@@ -706,14 +811,15 @@ const AttendanceDaily = () => {
 
     setTempInTime(formatInputVal(inTime));
     setTempOutTime(formatInputVal(outTime));
+    setIsSlidePanelOpen(true);
   };
 
-  // Handle save from modal
-  const handleSaveFromModal = () => {
-    if (selectedCell) {
+  // Handle save from slide panel
+  const handleSaveFromSlidePanel = () => {
+    if (selectedEmployee) {
       updateAttendanceStatus(
-        selectedCell.employeeId,
-        selectedCell.date,
+        selectedEmployee.id,
+        selectedEmployee.date,
         tempStatus,
         tempInTime,
         tempOutTime
@@ -777,7 +883,7 @@ const AttendanceDaily = () => {
   // Filter employees
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         emp.id?.toLowerCase().includes(searchTerm.toLowerCase());
+      emp.id?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStore = selectedStore === 'ALL' || emp.store_name === selectedStore;
     return matchesSearch && matchesStore;
   });
@@ -860,10 +966,19 @@ const AttendanceDaily = () => {
           </p>
         </div>
         <div className="flex gap-2">
+
+          <button
+            onClick={syncTodayLogs}
+            disabled={loading || syncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw size={12} className={loading || syncing ? 'animate-spin' : ''} />
+            Sync Today Logs
+          </button>
           <button
             onClick={syncDeviceLogs}
             disabled={loading || syncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-medium text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw size={12} className={loading || syncing ? 'animate-spin' : ''} />
             Sync Logs
@@ -891,27 +1006,37 @@ const AttendanceDaily = () => {
       </div>
 
       {/* View Toggle - Compact */}
-      <div className="flex flex-wrap justify-between items-center gap-2 mb-3 bg-white p-2 rounded-md border border-gray-200 shadow-sm">
-        <div className="flex bg-gray-100 p-0.5 rounded-md">
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-3 bg-white p-2 rounded border border-gray-200 shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="flex bg-gray-100 p-0.5 rounded-md">
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-all ${viewMode === 'calendar'
+                ? 'bg-white text-indigo-600 shadow'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
+            >
+              <Calendar size={12} />
+              Calendar
+            </button>
+            <button
+              onClick={() => setViewMode('daily')}
+              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-all ${viewMode === 'daily'
+                ? 'bg-white text-indigo-600 shadow'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
+            >
+              <Clock size={12} />
+              Daily List
+            </button>
+          </div>
+
           <button
-            onClick={() => setViewMode('calendar')}
-            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-all ${viewMode === 'calendar'
-              ? 'bg-white text-indigo-600 shadow'
-              : 'text-gray-600 hover:text-gray-900'
-              }`}
+            onClick={() => setIsMarkModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white  font-medium text-xs transition-colors shadow-sm"
           >
-            <Calendar size={12} />
-            Calendar
-          </button>
-          <button
-            onClick={() => setViewMode('daily')}
-            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-all ${viewMode === 'daily'
-              ? 'bg-white text-indigo-600 shadow'
-              : 'text-gray-600 hover:text-gray-900'
-              }`}
-          >
-            <Clock size={12} />
-            Daily List
+            <Plus size={12} />
+            Mark Attendance
           </button>
         </div>
 
@@ -1005,7 +1130,7 @@ const AttendanceDaily = () => {
             <table className="w-full text-xs relative border-collapse">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20 shadow-sm">
                 <tr>
-                  <th className="sticky top-0 left-0 bg-gray-50 px-2 py-1.5 font-medium text-gray-600 text-[10px] z-30 min-w-[80px] border-r">
+                  <th className="sticky top-0 left-0 bg-gray-50 px-2 py-1.5 font-medium text-gray-600 text-[10px] z-30 min-w-[80px] border-">
                     Employee
                   </th>
                   {days.map((day, idx) => (
@@ -1054,7 +1179,10 @@ const AttendanceDaily = () => {
                         </td>
                         {days.map((day, idx) => {
                           const attendance = getAttendanceForDate(employee.id, day.fullDate);
-                          const status = attendance.status || 'Absent';
+                          let status = attendance.status || 'Absent';
+                          if (attendance.late_minute > 0) {
+                            status = 'Late';
+                          }
                           const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
 
                           if (status === 'Present') presentCount++;
@@ -1066,7 +1194,7 @@ const AttendanceDaily = () => {
                             <td
                               key={idx}
                               className={`px-0.5 py-1 text-center cursor-pointer transition-all hover:opacity-80 ${day.isWeekend ? 'bg-gray-50' : ''}`}
-                              onClick={() => handleCellClick(employee.id, day.fullDate, status, attendance.in_time, attendance.out_time)}
+                              onClick={() => handleEmployeeSelect(employee, day.fullDate, status, attendance.in_time, attendance.out_time)}
                             >
                               <div className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${config.color} font-medium text-[10px] transition-transform hover:scale-105`}>
                                 {config.label}
@@ -1098,153 +1226,401 @@ const AttendanceDaily = () => {
         </div>
       ) : (
         /* Daily List View - Compact */
-        <div className="bg-white rounded-md border border-gray-200 overflow-hidden shadow-sm">
-          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)]">
-            <table className="w-full text-xs relative border-collapse">
-              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
-                <tr>
-                  <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[40px] z-10">#</th>
-                  <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-[140px] z-10">Employee</th>
-                  <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[100px] z-10">Store</th>
-                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[80px] z-10">Status</th>
-                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">In Time</th>
-                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">Out Time</th>
-                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[70px] z-10">Hours</th>
-                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[60px] z-10">Late</th>
-                  <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[50px] z-10">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {loading ? (
+        <>
+          <div className="bg-white rounded-md border border-gray-200 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)]">
+              <table className="w-full text-xs relative border-collapse">
+                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
                   <tr>
-                    <td colSpan={9} className="text-center py-6">
-                      <div className="flex items-center justify-center gap-1 text-gray-500 text-xs">
-                        <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                        Loading...
-                      </div>
-                    </td>
+                    <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[40px] z-10">#</th>
+                    <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[10vw] z-10">Employee</th>
+                    <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[100px] z-10">Store</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[80px] z-10">Status</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">In Time</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">Out Time</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[70px] z-10">Hours</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[60px] z-10">Late</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[50px] z-10">Action</th>
                   </tr>
-                ) : error ? (
-                  <tr>
-                    <td colSpan={9} className="text-center py-6">
-                      <p className="text-red-600 text-xs mb-2">{error}</p>
-                      <button onClick={syncDeviceLogs} className="px-3 py-1 bg-indigo-600 text-white rounded text-xs">Retry</button>
-                    </td>
-                  </tr>
-                ) : filteredEmployees.length > 0 ? (
-                  filteredEmployees.map((employee, idx) => {
-                    const attendance = getAttendanceForDate(employee.id, selectedDate);
-                    const status = attendance.status || 'Absent';
-                    const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={9} className="text-center py-6">
+                        <div className="flex items-center justify-center gap-1 text-gray-500 text-xs">
+                          <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                          Loading...
+                        </div>
+                      </td>
+                    </tr>
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={9} className="text-center py-6">
+                        <p className="text-red-600 text-xs mb-2">{error}</p>
+                        <button onClick={syncDeviceLogs} className="px-3 py-1 bg-indigo-600 text-white rounded text-xs">Retry</button>
+                      </td>
+                    </tr>
+                  ) : filteredEmployees.length > 0 ? (
+                    filteredEmployees.map((employee, idx) => {
+                      const attendance = getAttendanceForDate(employee.id, selectedDate);
+                      let status = attendance.status || 'Absent';
+                      if (attendance.late_minute > 0) {
+                        status = 'Late';
+                      }
+                      const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
 
-                    return (
-                      <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-2 py-1.5 text-[10px] text-gray-500 font-medium">{idx + 1}</td>
-                        <td className="px-2 py-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
-                              {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
+                      return (
+                        <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-2 py-1.5 text-[10px] text-gray-500 font-medium">{idx + 1}</td>
+                          <td className="px-2 py-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
+                                {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
+                              </div>
+                              <div>
+                                <p className="text-xs font-medium text-gray-900">{employee.name}</p>
+                                <p className="text-[9px] text-gray-500">{employee.id}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-xs font-medium text-gray-900">{employee.name}</p>
-                              <p className="text-[9px] text-gray-500">{employee.id}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-2 py-1.5 text-[10px] text-gray-600">{employee.store_name || '-'}</td>
-                        <td className="px-2 py-1.5 text-center">
-                          <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-medium ${config.color} ${config.bgColor}`}>
-                            {config.fullLabel}
-                          </span>
-                        </td>
-                        <td className="px-2 py-1.5 text-center text-[10px] font-mono">{formatTime12h(attendance.in_time)}</td>
-                        <td className="px-2 py-1.5 text-center text-[10px] font-mono">{formatTime12h(attendance.out_time)}</td>
-                        <td className="px-2 py-1.5 text-center text-[10px] font-semibold">{attendance.working_hour || '-'}</td>
-                        <td className="px-2 py-1.5 text-center text-[10px]">
-                          {attendance.late_minute > 0 ? (
-                            <span className="text-orange-600">{attendance.late_minute}m</span>
-                          ) : '-'}
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          <button
-                            onClick={() => handleCellClick(employee.id, selectedDate, status, attendance.in_time, attendance.out_time)}
-                            className="p-1 hover:bg-indigo-50 text-indigo-600 rounded transition-colors"
-                          >
-                            <Pencil size={10} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={9} className="text-center py-8">
-                      <div className="flex flex-col items-center justify-center text-gray-400">
-                        <Users size={32} className="mb-2" />
-                        <p className="text-xs font-medium">No employees found</p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                          </td>
+                          <td className="px-2 py-1.5 text-[10px] text-gray-600">{employee.store_name || '-'}</td>
+                          <td className="px-2 py-1.5 text-center">
+                            <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-medium ${config.color} ${config.bgColor}`}>
+                              {config.fullLabel}
+                            </span>
+                          </td>
+                          <td className="px-2 py-1.5 text-center text-[10px] font-mono">{formatTime12h(attendance.in_time)}</td>
+                          <td className="px-2 py-1.5 text-center text-[10px] font-mono">{formatTime12h(attendance.out_time)}</td>
+                          <td className="px-2 py-1.5 text-center text-[10px] font-semibold">{attendance.working_hour || '-'}</td>
+                          <td className="px-2 py-1.5 text-center text-[10px]">
+                            {attendance.late_minute > 0 ? (
+                              <span className="text-orange-600">{attendance.late_minute}m</span>
+                            ) : '-'}
+                          </td>
+                          <td className="px-2 py-1.5 text-center">
+                            <button
+                              onClick={() => handleEmployeeSelect(employee, selectedDate, status, attendance.in_time, attendance.out_time)}
+                              className="p-1 hover:bg-indigo-50 text-indigo-600 rounded transition-colors"
+                            >
+                              <Pencil size={10} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={9} className="text-center py-8">
+                        <div className="flex flex-col items-center justify-center text-gray-400">
+                          <Users size={32} className="mb-2" />
+                          <p className="text-xs font-medium">No employees found</p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+        </>
       )}
 
-      {/* Edit Modal - Compact */}
-      {selectedCell && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-md shadow-xl max-w-md w-full mx-4">
-            <div className="flex justify-between items-center p-3 border-b">
-              <h3 className="text-sm font-semibold text-gray-900">Edit Attendance</h3>
-              <button onClick={() => { setSelectedCell(null); setEditingCell(null); }} className="text-gray-400 hover:text-gray-600">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-3 space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-0.5">Status</label>
-                <select
-                  value={tempStatus}
-                  onChange={(e) => setTempStatus(e.target.value)}
-                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+      {/* Slide Panel - Right to Left */}
+      <div className={`fixed inset-0 overflow-hidden z-50 ${isSlidePanelOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+        {/* Overlay */}
+        <div
+          className={`absolute inset-0 bg-black transition-opacity duration-300 ${isSlidePanelOpen ? 'opacity-50' : 'opacity-0'}`}
+          onClick={() => {
+            setIsSlidePanelOpen(false);
+            setSelectedEmployee(null);
+          }}
+        />
+
+        {/* Slide Panel */}
+        <div className={`absolute inset-y-0 right-0 max-w-6xl w-full bg-white shadow-2xl transform transition-transform duration-300 ease-in-out ${isSlidePanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+          {selectedEmployee && (
+            <div className="h-full flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b bg-gray-50 text-gray-900">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                    {selectedEmployee.name?.charAt(0).toUpperCase() || '?'}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-base text-gray-900">{selectedEmployee.name}</h3>
+                    <p className="text-xs text-gray-500">ID: {selectedEmployee.id}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsSlidePanelOpen(false);
+                    setSelectedEmployee(null);
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
                 >
-                  {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-                    <option key={key} value={key}>{config.fullLabel}</option>
-                  ))}
-                </select>
+                  <X size={20} />
+                </button>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-0.5">IN Time</label>
-                <input
-                  type="datetime-local"
-                  value={tempInTime}
-                  onChange={(e) => setTempInTime(e.target.value)}
-                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto bg-slate-50/50">
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4 pb-2 border-b border-gray-100">
+                      Attendance Details
+                    </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {/* Department */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Department</label>
+                        <select className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50 text-gray-500 cursor-not-allowed" disabled>
+                          <option>{selectedEmployee.designation || '--'}</option>
+                        </select>
+                      </div>
+
+                      {/* Employees */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Employee <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.name}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50 text-gray-500 cursor-not-allowed"
+                          disabled
+                        />
+                      </div>
+
+                      {/* Location */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Location</label>
+                        <select className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50 text-gray-500 cursor-not-allowed" disabled>
+                          <option>{selectedEmployee.attendance?.store_name || selectedEmployee.store_name || 'Worksuite'}</option>
+                        </select>
+                      </div>
+
+                      {/* Mark Attendance By */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mark Attendance By</label>
+                        <div className="flex items-center gap-4 mt-2">
+                          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                            <input type="radio" checked={true} readOnly className="w-4 h-4 text-red-600 focus:ring-red-500 border-gray-300" />
+                            <span>Date</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-not-allowed">
+                            <input type="radio" disabled className="w-4 h-4 text-gray-300 border-gray-300" />
+                            <span>Month</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Year */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Year <span className="text-red-500">*</span></label>
+                        <select className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50 text-gray-500 cursor-not-allowed" disabled>
+                          <option>{new Date(selectedEmployee.date).getFullYear()}</option>
+                        </select>
+                      </div>
+
+                      {/* Month */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Month <span className="text-red-500">*</span></label>
+                        <select className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50 text-gray-500 cursor-not-allowed" disabled>
+                          <option>{new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(selectedEmployee.date))}</option>
+                        </select>
+                      </div>
+
+                      {/* Status select - custom editable field */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Attendance Status <span className="text-red-500">*</span></label>
+                        <select
+                          value={tempStatus}
+                          onChange={(e) => setTempStatus(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white text-gray-800 font-medium"
+                        >
+                          {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                            <option key={key} value={key}>{config.fullLabel}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Clock In */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Clock In <span className="text-red-500">*</span></label>
+                        <input
+                          type="datetime-local"
+                          value={tempInTime}
+                          onChange={(e) => setTempInTime(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                        />
+                      </div>
+
+                      {/* Clock Out */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Clock Out</label>
+                        <input
+                          type="datetime-local"
+                          value={tempOutTime}
+                          onChange={(e) => setTempOutTime(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                        />
+                      </div>
+
+                      {/* Late (Yes/No radio) */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Late</label>
+                        <div className="flex items-center gap-4 mt-2">
+                          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="lateRadio"
+                              checked={tempStatus === 'Late'}
+                              onChange={() => setTempStatus('Late')}
+                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                            />
+                            <span>Yes</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="lateRadio"
+                              checked={tempStatus !== 'Late'}
+                              onChange={() => {
+                                if (tempStatus === 'Late') setTempStatus('Present');
+                              }}
+                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                            />
+                            <span>No</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Half Day (Yes/No radio) */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Half Day</label>
+                        <div className="flex items-center gap-4 mt-2">
+                          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="halfDayRadio"
+                              checked={tempStatus === 'Half Day'}
+                              onChange={() => setTempStatus('Half Day')}
+                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                            />
+                            <span>Yes</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="halfDayRadio"
+                              checked={tempStatus !== 'Half Day'}
+                              onChange={() => {
+                                if (tempStatus === 'Half Day') setTempStatus('Present');
+                              }}
+                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                            />
+                            <span>No</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Working From */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Working From <span className="text-red-500">*</span></label>
+                        <select className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
+                          <option>Office</option>
+                          <option>Home</option>
+                        </select>
+                      </div>
+
+                      {/* Attendance Overwrite Checkbox */}
+                      <div className="lg:col-span-3 flex items-center gap-2 mt-2">
+                        <input
+                          type="checkbox"
+                          id="attendanceOverwrite"
+                          className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        />
+                        <label htmlFor="attendanceOverwrite" className="text-sm font-medium text-gray-700 cursor-pointer flex items-center gap-1">
+                          Attendance Overwrite
+                          <span className="w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold flex items-center justify-center cursor-help" title="Overwrite automatically calculated logs?">?</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Punch Details and Raw Logs */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-100">
+                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Calculated Metrics</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between py-1 border-b border-dashed border-gray-200">
+                          <span className="text-gray-500">Working Hours</span>
+                          <span className="font-semibold text-gray-800">{selectedEmployee.attendance?.working_hour || '-'}</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-dashed border-gray-200">
+                          <span className="text-gray-500">Overtime</span>
+                          <span className="font-semibold text-gray-800">{selectedEmployee.attendance?.overtime || '-'}</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-dashed border-gray-200">
+                          <span className="text-gray-500">Late Minutes</span>
+                          <span className="font-semibold text-orange-600">{selectedEmployee.attendance?.late_minute || 0}m</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-dashed border-gray-200">
+                          <span className="text-gray-500">Standard Lunch</span>
+                          <span className="font-semibold text-gray-800">{selectedEmployee.attendance?.standard_lunch || '-'}</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-dashed border-gray-200">
+                          <span className="text-gray-500">Waste Time</span>
+                          <span className="font-semibold text-gray-800">{selectedEmployee.attendance?.waste_time || '-'}</span>
+                        </div>
+                        <div className="flex justify-between py-1">
+                          <span className="text-gray-500">Device Serial</span>
+                          <span className="font-mono text-xs text-gray-800">{selectedEmployee.attendance?.serial_number || '-'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Punch Logs</h4>
+                      {selectedEmployee.attendance?.punch_log ? (
+                        <div className="bg-white rounded p-3 border border-gray-200 h-[140px] overflow-y-auto">
+                          <p className="text-xs font-mono text-gray-700 whitespace-pre-line leading-relaxed">
+                            {selectedEmployee.attendance.punch_log}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="bg-white rounded p-3 border border-gray-200 h-[140px] flex items-center justify-center text-gray-400 text-xs">
+                          No punch logs recorded
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-0.5">OUT Time</label>
-                <input
-                  type="datetime-local"
-                  value={tempOutTime}
-                  onChange={(e) => setTempOutTime(e.target.value)}
-                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-2 p-4 border-t bg-gray-50">
+                <button
+                  onClick={() => {
+                    setIsSlidePanelOpen(false);
+                    setSelectedEmployee(null);
+                  }}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveFromSlidePanel}
+                  className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded font-semibold flex items-center gap-1.5 transition-colors shadow-sm animate-pulse-subtle"
+                >
+                  <CheckCircle size={16} />
+                  Save
+                </button>
               </div>
             </div>
-            <div className="flex justify-end gap-2 p-3 border-t">
-              <button onClick={() => { setSelectedCell(null); setEditingCell(null); }} className="px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 rounded transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleSaveFromModal} className="px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors">
-                Save
-              </button>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Raw Punches Section - Compact */}
       {rawLogs.length > 0 && (
@@ -1278,6 +1654,122 @@ const AttendanceDaily = () => {
               </table>
             </div>
           </details>
+        </div>
+      )}
+
+      {/* Mark Attendance Modal Popup */}
+      {isMarkModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsMarkModalOpen(false)}>
+          <div className="bg-white max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 animate-fade-in text-gray-900" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                <ClockIcon size={16} className="text-indigo-600" />
+                Mark Attendance Manually
+              </h3>
+              <button
+                onClick={() => setIsMarkModalOpen(false)}
+                className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-600 rounded transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleMarkSubmit} className="p-5 space-y-4">
+              {/* Date */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Date</label>
+                <input
+                  type="text"
+                  value={selectedDate}
+                  className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 font-bold text-slate-600 cursor-not-allowed font-mono"
+                  readOnly
+                />
+              </div>
+
+              {/* Employee Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Employee <span className="text-red-500">*</span></label>
+                <select
+                  value={markEmployeeId}
+                  onChange={(e) => setMarkEmployeeId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900"
+                  required
+                >
+                  <option value="">Select Employee</option>
+                  {allEmployees.map(emp => (
+                    <option key={emp.employee_id} value={emp.employee_id}>
+                      {emp.name_as_per_aadhar} ({emp.employee_id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Status</label>
+                <div className="flex gap-4 mt-2">
+                  {['Present', 'Late', 'Absent', 'Half Day'].map((st) => (
+                    <label key={st} className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="markStatus"
+                        value={st}
+                        checked={markStatus === st}
+                        onChange={() => setMarkStatus(st)}
+                        className="w-3.5 h-3.5 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                      />
+                      <span>{st}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* In & Out Times */}
+              {markStatus !== 'Absent' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">In Time</label>
+                    <input
+                      type="datetime-local"
+                      value={markInTime}
+                      onChange={(e) => setMarkInTime(e.target.value)}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Out Time</label>
+                    <input
+                      type="datetime-local"
+                      value={markOutTime}
+                      onChange={(e) => setMarkOutTime(e.target.value)}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsMarkModalOpen(false)}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
+                >
+                  Save Attendance
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

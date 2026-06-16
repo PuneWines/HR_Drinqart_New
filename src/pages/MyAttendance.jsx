@@ -216,7 +216,7 @@ const MyAttendance = () => {
             const totalMinutes = inDate.getHours() * 60 + inDate.getMinutes();
             const officialStartTime = 10 * 60; // 10:00 AM
             const graceTimeThreshold = 10 * 60 + 10; // 10:10 AM
-            return totalMinutes > graceTimeThreshold ? totalMinutes - officialStartTime : 0;
+            return totalMinutes >= graceTimeThreshold ? totalMinutes - officialStartTime : 0;
         } catch (e) { return 0; }
     };
 
@@ -387,6 +387,9 @@ const MyAttendance = () => {
                     if (h < 8) {
                         finalStatus = 'Absent';
                     }
+                }
+                if (lateMins > 0) {
+                    finalStatus = 'Late';
                 }
 
                 return {
