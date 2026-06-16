@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, UserPlus, Search, Eye, Edit, Trash2, X, Save, XCircle, Sparkles, Filter, Upload, Image, File, User, CreditCard, BookOpen, FileText, ExternalLink } from 'lucide-react'
+import { Users, UserPlus, Search, Eye, Edit, Trash2, X, Save, XCircle, Sparkles, Filter, Upload, Image, File, User, CreditCard, BookOpen, FileText, ExternalLink, ChevronLeft } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 // Storage bucket name
@@ -11,7 +11,7 @@ export default function EmployeeManagement() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
+  const [showEditPanel, setShowEditPanel] = useState(false) // Changed from showEditModal
   const [editingEmployee, setEditingEmployee] = useState(null)
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
@@ -20,17 +20,7 @@ export default function EmployeeManagement() {
   const [editFormData, setEditFormData] = useState({})
   const [joiningCompanies, setJoiningCompanies] = useState([])
 
-  // File preview states for form
-  const [filePreviews, setFilePreviews] = useState({
-    aadharFront: null,
-    aadharBack: null,
-    candidatePhoto: null,
-    panCard: null,
-    bankPassbook: null,
-    resume: null
-  })
-
-  // File preview states for edit modal
+  // File preview states for edit panel
   const [editFilePreviews, setEditFilePreviews] = useState({
     aadharFront: null,
     aadharBack: null,
@@ -63,7 +53,6 @@ export default function EmployeeManagement() {
     payment_mode: 'Bank Transfer',
     beneficiary_name: '',
     status: 'Active',
-    // Document files (File objects)
     aadharFront: null,
     aadharBack: null,
     candidatePhoto: null,
@@ -138,7 +127,6 @@ export default function EmployeeManagement() {
 
       if (error) throw error
 
-      // Get public URL
       const { data: urlData } = supabase.storage
         .from(STORAGE_BUCKET)
         .getPublicUrl(fileName)
@@ -180,10 +168,10 @@ export default function EmployeeManagement() {
   }, [])
 
   useEffect(() => {
-    if (showForm || showEditModal) {
+    if (showForm || showEditPanel) {
       fetchJoiningCompanies()
     }
-  }, [showForm, showEditModal])
+  }, [showForm, showEditPanel])
 
   const fetchJoiningCompanies = async () => {
     try {
@@ -242,32 +230,7 @@ export default function EmployeeManagement() {
     setEditFormData(prev => ({ ...prev, [name]: value }))
   }
 
-  // Handle file change in add form
-  const handleFileChange = (e, fieldName) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
-    if (!validTypes.includes(file.type)) {
-      alert('Please upload a valid image (JPEG, PNG) or PDF file')
-      return
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert('File size should be less than 5MB')
-      return
-    }
-
-    // Create preview URL
-    const previewUrl = URL.createObjectURL(file)
-
-    setFormData(prev => ({ ...prev, [fieldName]: file }))
-    setFilePreviews(prev => ({ ...prev, [fieldName]: previewUrl }))
-  }
-
-  // Handle file change in edit modal
+  // Handle file change in edit panel
   const handleEditFileChange = (e, fieldName) => {
     const file = e.target.files[0]
     if (!file) return
@@ -289,13 +252,7 @@ export default function EmployeeManagement() {
     setEditFilePreviews(prev => ({ ...prev, [fieldName]: previewUrl }))
   }
 
-  // Remove file in add form
-  const handleRemoveFile = (fieldName) => {
-    setFormData(prev => ({ ...prev, [fieldName]: null }))
-    setFilePreviews(prev => ({ ...prev, [fieldName]: null }))
-  }
-
-  // Remove file in edit modal
+  // Remove file in edit panel
   const handleEditRemoveFile = (fieldName) => {
     setEditFormData(prev => ({ ...prev, [fieldName]: null }))
     setEditFilePreviews(prev => ({ ...prev, [fieldName]: null }))
@@ -334,16 +291,6 @@ export default function EmployeeManagement() {
       bankPassbook: null,
       resume: null
     })
-
-    // Clear file previews
-    setFilePreviews({
-      aadharFront: null,
-      aadharBack: null,
-      candidatePhoto: null,
-      panCard: null,
-      bankPassbook: null,
-      resume: null
-    })
   }
 
   const handleSubmit = async (e) => {
@@ -352,7 +299,6 @@ export default function EmployeeManagement() {
     setUploading(true)
 
     try {
-      // Check if employee_id already exists
       const { data: existing } = await supabase
         .from('employees')
         .select('employee_id')
@@ -366,7 +312,6 @@ export default function EmployeeManagement() {
         return
       }
 
-      // Upload documents first using the employee ID
       const files = {
         aadharFront: formData.aadharFront,
         aadharBack: formData.aadharBack,
@@ -378,7 +323,6 @@ export default function EmployeeManagement() {
 
       const uploadedUrls = await uploadEmployeeDocuments(formData.employee_id, files)
 
-      // Compile the complete employee record, including the uploaded document URLs
       const employeeData = {
         employee_id: formData.employee_id,
         indent_no: formData.indent_no || null,
@@ -410,7 +354,6 @@ export default function EmployeeManagement() {
         resume_url: uploadedUrls.resume || null
       }
 
-      // Insert record in a single database operation
       const { data: newEmployee, error: insertError } = await supabase
         .from('employees')
         .insert([employeeData])
@@ -437,14 +380,12 @@ export default function EmployeeManagement() {
     setUploading(true)
 
     try {
-      // Get current employee data
       const { data: currentEmployee } = await supabase
         .from('employees')
         .select('employee_id, aadhar_front_image, aadhar_back_image, candidate_photo, pan_card_image, bank_passbook_image, resume_url')
         .eq('id', editingEmployee.id)
         .single()
 
-      // Upload new documents
       const files = {
         aadharFront: editFormData.aadharFront,
         aadharBack: editFormData.aadharBack,
@@ -456,7 +397,6 @@ export default function EmployeeManagement() {
 
       const uploadedUrls = await uploadEmployeeDocuments(currentEmployee.employee_id, files)
 
-      // Prepare update data
       const updateData = {
         name_as_per_aadhar: editFormData.name_as_per_aadhar,
         date_of_joining: editFormData.date_of_joining,
@@ -479,7 +419,6 @@ export default function EmployeeManagement() {
         family_mobile_no: editFormData.family_mobile_no || null,
         joining_company_name: editFormData.joining_company_name || null,
         updated_at: new Date(),
-        // Update document URLs (keep existing if not replaced)
         aadhar_front_image: uploadedUrls.aadharFront || currentEmployee.aadhar_front_image,
         aadhar_back_image: uploadedUrls.aadharBack || currentEmployee.aadhar_back_image,
         candidate_photo: uploadedUrls.candidatePhoto || currentEmployee.candidate_photo,
@@ -495,11 +434,10 @@ export default function EmployeeManagement() {
 
       if (error) throw error
 
-      // Refresh employee list
       await fetchEmployees()
 
       alert('Employee updated successfully!')
-      setShowEditModal(false)
+      setShowEditPanel(false)
       setEditingEmployee(null)
       setEditFormData({})
       setEditFilePreviews({
@@ -519,7 +457,7 @@ export default function EmployeeManagement() {
     }
   }
 
-  const openEditModal = (employee) => {
+  const openEditPanel = (employee) => {
     setEditingEmployee(employee)
     setEditFormData({
       name_as_per_aadhar: employee.name_as_per_aadhar,
@@ -530,19 +468,18 @@ export default function EmployeeManagement() {
       designation: employee.designation,
       salary: employee.salary || '',
       status: employee.status,
-      candidate_email: employee.candidate_email,
-      dob: employee.dob,
-      gender: employee.gender,
-      current_account_no: employee.current_account_no,
-      ifsc_code: employee.ifsc_code,
-      branch_name: employee.branch_name,
-      payment_mode: employee.payment_mode,
+      candidate_email: employee.candidate_email || '',
+      dob: employee.dob || '',
+      gender: employee.gender || '',
+      current_account_no: employee.current_account_no || '',
+      ifsc_code: employee.ifsc_code || '',
+      branch_name: employee.branch_name || '',
+      payment_mode: employee.payment_mode || 'Bank Transfer',
       beneficiary_name: employee.beneficiary_name || '',
-      mode_of_attendance: employee.mode_of_attendance,
+      mode_of_attendance: employee.mode_of_attendance || 'Biometric',
       aadhar_no: employee.aadhar_no || '',
       family_mobile_no: employee.family_mobile_no || '',
       joining_company_name: employee.joining_company_name || '',
-      // File fields (will be set when new files are uploaded)
       aadharFront: null,
       aadharBack: null,
       candidatePhoto: null,
@@ -551,7 +488,6 @@ export default function EmployeeManagement() {
       resume: null
     })
 
-    // Set existing document previews
     setEditFilePreviews({
       aadharFront: employee.aadhar_front_image || null,
       aadharBack: employee.aadhar_back_image || null,
@@ -561,7 +497,7 @@ export default function EmployeeManagement() {
       resume: employee.resume_url || null
     })
 
-    setShowEditModal(true)
+    setShowEditPanel(true)
   }
 
   const resetForm = () => {
@@ -588,15 +524,6 @@ export default function EmployeeManagement() {
       payment_mode: 'Bank Transfer',
       beneficiary_name: '',
       status: 'Active',
-      aadharFront: null,
-      aadharBack: null,
-      candidatePhoto: null,
-      panCard: null,
-      bankPassbook: null,
-      resume: null
-    })
-
-    setFilePreviews({
       aadharFront: null,
       aadharBack: null,
       candidatePhoto: null,
@@ -649,56 +576,51 @@ export default function EmployeeManagement() {
     }
   }
 
-  // Render file upload component
-  const renderFileUpload = (fieldName, label, icon, required = false, isEdit = false) => {
-    const previews = isEdit ? editFilePreviews : filePreviews
-    const formDataObj = isEdit ? editFormData : formData
-    const handleChange = isEdit ? handleEditFileChange : handleFileChange
-    const handleRemove = isEdit ? handleEditRemoveFile : handleRemoveFile
-
+  // Render file upload component for edit panel
+  const renderEditFileUpload = (fieldName, label, icon) => {
     return (
       <div className="space-y-1">
-        <label className="block text-sm font-medium text-gray-700">
-          {label} {required && <span className="text-red-500">*</span>}
+        <label className="block text-xs font-medium text-gray-700">
+          {label}
         </label>
         <div className="flex items-center gap-2">
-          {previews[fieldName] ? (
+          {editFilePreviews[fieldName] ? (
             <div className="relative">
               {fieldName === 'resume' ? (
                 <a
-                  href={previews[fieldName]}
+                  href={editFilePreviews[fieldName]}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-3 py-2 border rounded bg-gray-50 text-sm text-blue-600 hover:bg-blue-50"
+                  className="flex items-center gap-2 px-3 py-1.5 border rounded bg-gray-50 text-xs text-blue-600 hover:bg-blue-50"
                 >
-                  <FileText size={16} />
-                  View Resume
+                  <FileText size={14} />
+                  View
                 </a>
               ) : (
                 <img
-                  src={previews[fieldName]}
+                  src={editFilePreviews[fieldName]}
                   alt={fieldName}
-                  className="w-16 h-16 object-cover rounded border"
+                  className="w-14 h-14 object-cover rounded border"
                 />
               )}
               <button
                 type="button"
-                onClick={() => handleRemove(fieldName)}
-                className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                onClick={() => handleEditRemoveFile(fieldName)}
+                className="absolute -top-2 -right-2 p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600"
               >
                 <X size={12} />
               </button>
             </div>
           ) : (
-            <label className="flex items-center gap-2 px-4 py-2 border-2 border-dashed rounded hover:border-indigo-500 cursor-pointer transition-colors">
+            <label className="flex items-center gap-1.5 px-3 py-1.5 border-2 border-dashed rounded hover:border-indigo-500 cursor-pointer transition-colors">
               <input
                 type="file"
                 accept="image/*,.pdf"
-                onChange={(e) => handleChange(e, fieldName)}
+                onChange={(e) => handleEditFileChange(e, fieldName)}
                 className="hidden"
               />
               {icon}
-              <span className="text-sm text-gray-600">Upload</span>
+              <span className="text-xs text-gray-600">Upload</span>
             </label>
           )}
         </div>
@@ -735,7 +657,7 @@ export default function EmployeeManagement() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="pl-9 pr-8 py-2 border border-gray-200  text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none bg-white"
+            className="pl-9 pr-8 py-2 border border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none bg-white"
           >
             <option value="all">All Employees ({getStatusCount('all')})</option>
             <option value="active">Active ({getStatusCount('active')})</option>
@@ -757,7 +679,7 @@ export default function EmployeeManagement() {
             placeholder="Search by name, ID, designation or mobile..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-gray-200  text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
         </div>
       </div>
@@ -832,7 +754,7 @@ export default function EmployeeManagement() {
                     <select
                       value={emp.status}
                       onChange={(e) => handleUpdateStatus(emp, e.target.value)}
-                      className={`px-2 py-0.5 rounded-full text-xs font-medium border-0 focus:ring-1 cursor-pointer ${emp.status === 'Active' ? 'bg-green-100 text-green-700' :
+                      className={`px-2 py-0.5 text-xs font-medium border-0 focus:ring-1 cursor-pointer ${emp.status === 'Active' ? 'bg-green-100 text-green-700' :
                         emp.status === 'Inactive' ? 'bg-yellow-100 text-yellow-700' :
                           'bg-red-100 text-red-700'
                         }`}
@@ -844,7 +766,7 @@ export default function EmployeeManagement() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
-                      <button onClick={() => openEditModal(emp)} className="p-1 text-blue-600 hover:text-blue-700" title="Edit">
+                      <button onClick={() => openEditPanel(emp)} className="p-1 text-blue-600 hover:text-blue-700" title="Edit">
                         <Edit size={16} />
                       </button>
                       <button onClick={() => handleViewDetails(emp)} className="p-1 text-gray-600 hover:text-indigo-600" title="View">
@@ -865,11 +787,10 @@ export default function EmployeeManagement() {
       {/* Modal Popup for Add Employee Form */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
-          <div className="bg-white  max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-white max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
               <h2 className="text-lg font-semibold">Add New Employee</h2>
               <div className="flex gap-2">
-
                 <button onClick={() => setShowForm(false)} className="p-1 hover:bg-gray-100 rounded">
                   <X size={18} />
                 </button>
@@ -879,7 +800,6 @@ export default function EmployeeManagement() {
             <form onSubmit={handleSubmit}>
               <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-
                   {/* Self-Registration QR Code Card */}
                   <div className="lg:col-span-3 bg-gradient-to-br from-indigo-50/90 via-purple-50/50 to-indigo-50/30 border border-indigo-100 rounded-xl p-5 flex flex-col md:flex-row items-center gap-5 mb-2 shadow-sm transition-all duration-300 hover:shadow-md">
                     <div className="bg-white p-2.5 rounded-xl shadow-sm border border-indigo-100 shrink-0">
@@ -905,7 +825,7 @@ export default function EmployeeManagement() {
                           href="/register"
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3.5 py-1.5 rounded-lg shadow-sm transition-all duration-200"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3.5 py-1.5  shadow-sm transition-all duration-200"
                         >
                           Open Page <ExternalLink size={14} />
                         </a>
@@ -926,29 +846,29 @@ export default function EmployeeManagement() {
                       value={formData.employee_id}
                       onChange={handleInputChange}
                       placeholder="e.g., EMP001"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                       required
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Full Name <span className="text-red-500">*</span></label>
-                    <input type="text" name="name_as_per_aadhar" value={formData.name_as_per_aadhar} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="name_as_per_aadhar" value={formData.name_as_per_aadhar} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Father's Name <span className="text-red-500">*</span></label>
-                    <input type="text" name="father_name" value={formData.father_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="father_name" value={formData.father_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth <span className="text-red-500">*</span></label>
-                    <input type="date" name="dob" value={formData.dob} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="date" name="dob" value={formData.dob} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Gender <span className="text-red-500">*</span></label>
-                    <select name="gender" value={formData.gender} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required>
+                    <select name="gender" value={formData.gender} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required>
                       <option value="">Select Gender</option>
                       <option value="Male">Male</option>
                       <option value="Female">Female</option>
@@ -958,17 +878,17 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Mobile No <span className="text-red-500">*</span></label>
-                    <input type="tel" name="mobile_no" value={formData.mobile_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="tel" name="mobile_no" value={formData.mobile_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input type="email" name="candidate_email" value={formData.candidate_email} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
+                    <input type="email" name="candidate_email" value={formData.candidate_email} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Family Mobile No</label>
-                    <input type="tel" name="family_mobile_no" value={formData.family_mobile_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
+                    <input type="tel" name="family_mobile_no" value={formData.family_mobile_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
                   </div>
 
                   {/* Employment Information Section */}
@@ -978,12 +898,12 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Date of Joining <span className="text-red-500">*</span></label>
-                    <input type="date" name="date_of_joining" value={formData.date_of_joining} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="date" name="date_of_joining" value={formData.date_of_joining} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Joining Place <span className="text-red-500">*</span></label>
-                    <input type="text" name="joining_place" value={formData.joining_place} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="joining_place" value={formData.joining_place} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   <div>
@@ -992,7 +912,7 @@ export default function EmployeeManagement() {
                       name="designation"
                       value={formData.designation}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
                       required
                     >
                       <option value="">Select Designation</option>
@@ -1002,15 +922,13 @@ export default function EmployeeManagement() {
                     </select>
                   </div>
 
-
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Joining Shop Name</label>
                     <select
                       name="joining_company_name"
                       value={formData.joining_company_name}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                     >
                       <option value="">Select Shop</option>
                       {joiningCompanies.map((company) => (
@@ -1023,7 +941,7 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Mode of Attendance</label>
-                    <select name="mode_of_attendance" value={formData.mode_of_attendance} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
+                    <select name="mode_of_attendance" value={formData.mode_of_attendance} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
                       <option value="Biometric">Biometric</option>
                       <option value="Manual">Manual</option>
                     </select>
@@ -1031,7 +949,7 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar No <span className="text-red-500">*</span></label>
-                    <input type="text" name="aadhar_no" value={formData.aadhar_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="aadhar_no" value={formData.aadhar_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   {/* Banking Information Section */}
@@ -1041,22 +959,22 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Account No <span className="text-red-500">*</span></label>
-                    <input type="text" name="current_account_no" value={formData.current_account_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="current_account_no" value={formData.current_account_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code <span className="text-red-500">*</span></label>
-                    <input type="text" name="ifsc_code" value={formData.ifsc_code} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="ifsc_code" value={formData.ifsc_code} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name <span className="text-red-500">*</span></label>
-                    <input type="text" name="branch_name" value={formData.branch_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="branch_name" value={formData.branch_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode <span className="text-red-500">*</span></label>
-                    <select name="payment_mode" value={formData.payment_mode} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required>
+                    <select name="payment_mode" value={formData.payment_mode} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required>
                       <option value="Bank Transfer">Bank Transfer</option>
                       <option value="Cheque">Cheque</option>
                       <option value="Cash">Cash</option>
@@ -1065,41 +983,22 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Beneficiary Name</label>
-                    <input type="text" name="beneficiary_name" value={formData.beneficiary_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
+                    <input type="text" name="beneficiary_name" value={formData.beneficiary_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select name="status" value={formData.status} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
+                    <select name="status" value={formData.status} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
                       <option value="Active">Active</option>
                       <option value="Inactive">Inactive</option>
                       <option value="Left">Left</option>
                     </select>
                   </div>
-
-                  {/* Documents Section */}
-                  <div className="lg:col-span-3">
-                    <h3 className="text-md font-medium text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center gap-2">
-                      <Upload size={18} />
-                      Documents
-                    </h3>
-                  </div>
-
-                  <div className="lg:col-span-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {renderFileUpload('candidatePhoto', 'Candidate Photo', <User size={18} />, true)}
-                      {renderFileUpload('aadharFront', 'Aadhar Front', <Image size={18} />, true)}
-                      {renderFileUpload('aadharBack', 'Aadhar Back', <Image size={18} />, true)}
-                      {renderFileUpload('panCard', 'PAN Card', <CreditCard size={18} />)}
-                      {renderFileUpload('bankPassbook', 'Bank Passbook', <BookOpen size={18} />)}
-                      {renderFileUpload('resume', 'Resume', <FileText size={18} />)}
-                    </div>
-                  </div>
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 sticky bottom-0">
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-700 border border-gray-300  hover:bg-gray-50 transition-colors">
+                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors">
                   Cancel
                 </button>
                 <button type="submit" disabled={saving || uploading} className="px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2">
@@ -1112,423 +1011,806 @@ export default function EmployeeManagement() {
         </div>
       )}
 
-      {/* Edit Employee Modal */}
-      {showEditModal && editingEmployee && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowEditModal(false)}>
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
-              <h2 className="text-lg font-semibold">Edit Employee</h2>
-              <button onClick={() => setShowEditModal(false)} className="p-1 hover:bg-gray-100 rounded">
-                <X size={18} />
-              </button>
-            </div>
+      {/* Edit Employee Slide Panel - Right to Left */}
+      <div className={`fixed inset-0 overflow-hidden z-50 ${showEditPanel ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+        {/* Overlay */}
+        <div
+          className={`absolute inset-0 bg-black transition-opacity duration-300 ${showEditPanel ? 'opacity-50' : 'opacity-0'}`}
+          onClick={() => {
+            setShowEditPanel(false)
+            setEditingEmployee(null)
+          }}
+        />
 
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {/* Documents Section */}
-                <div className="lg:col-span-3">
-                  <h3 className="text-md font-medium text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center gap-2">
-                    <Upload size={18} />
-                    Documents
-                  </h3>
-                </div>
-
-                <div className="lg:col-span-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {renderFileUpload('candidatePhoto', 'Candidate Photo', <User size={18} />, false, true)}
-                    {renderFileUpload('aadharFront', 'Aadhar Front', <Image size={18} />, false, true)}
-                    {renderFileUpload('aadharBack', 'Aadhar Back', <Image size={18} />, false, true)}
-                    {renderFileUpload('panCard', 'PAN Card', <CreditCard size={18} />, false, true)}
-                    {renderFileUpload('bankPassbook', 'Bank Passbook', <BookOpen size={18} />, false, true)}
-                    {renderFileUpload('resume', 'Resume', <FileText size={18} />, false, true)}
+        {/* Slide Panel */}
+        <div className={`absolute inset-y-0 right-0 max-w-6xl w-full bg-white shadow-2xl transform transition-transform duration-300 ease-in-out ${showEditPanel ? 'translate-x-0' : 'translate-x-full'}`}>
+          {editingEmployee && (
+            <div className="h-full flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b bg-gray-50 text-gray-900">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowEditPanel(false)
+                      setEditingEmployee(null)
+                    }}
+                    className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  {editFilePreviews.candidatePhoto ? (
+                    <img
+                      src={editFilePreviews.candidatePhoto}
+                      alt={editingEmployee.name_as_per_aadhar}
+                      className="w-10 h-10 rounded-full object-cover border border-gray-200"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">
+                      {editingEmployee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
+                    </div>
+                  )}
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900">Edit Employee</h2>
+                    <p className="text-xs text-gray-500">Update employee information</p>
                   </div>
                 </div>
-
-                {/* Personal Information Section */}
-                <div className="lg:col-span-3 mt-2">
-                  <h3 className="text-md font-medium text-gray-700 mb-3 pb-2 border-b border-gray-200">Personal Information</h3>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
-                  <input
-                    type="text"
-                    value={editingEmployee.employee_id}
-                    disabled
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    name="name_as_per_aadhar"
-                    value={editFormData.name_as_per_aadhar || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Father's Name <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    name="father_name"
-                    value={editFormData.father_name || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth <span className="text-red-500">*</span></label>
-                  <input
-                    type="date"
-                    name="dob"
-                    value={editFormData.dob || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Gender <span className="text-red-500">*</span></label>
-                  <select
-                    name="gender"
-                    value={editFormData.gender || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 bg-gray-200/50 px-3 py-1 rounded-full text-gray-700">
+                    <span className="text-xs font-medium">ID:</span>
+                    <span className="text-xs font-semibold">{editingEmployee.employee_id}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowEditPanel(false)
+                      setEditingEmployee(null)
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
                   >
-                    <option value="">Select Gender</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Mobile No <span className="text-red-500">*</span></label>
-                  <input
-                    type="tel"
-                    name="mobile_no"
-                    value={editFormData.mobile_no || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    name="candidate_email"
-                    value={editFormData.candidate_email || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Family Mobile No</label>
-                  <input
-                    type="tel"
-                    name="family_mobile_no"
-                    value={editFormData.family_mobile_no || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-
-                {/* Employment Information Section */}
-                <div className="lg:col-span-3 mt-2">
-                  <h3 className="text-md font-medium text-gray-700 mb-3 pb-2 border-b border-gray-200">Employment Information</h3>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Joining <span className="text-red-500">*</span></label>
-                  <input
-                    type="date"
-                    name="date_of_joining"
-                    value={editFormData.date_of_joining || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Joining Place <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    name="joining_place"
-                    value={editFormData.joining_place || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Designation <span className="text-red-500">*</span></label>
-                  <select
-                    name="designation"
-                    value={editFormData.designation || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                    required
-                  >
-                    <option value="">Select Designation</option>
-                    <option value="Employee">Employee</option>
-                    <option value="Manager">Manager</option>
-                    <option value="HOD">HOD</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Salary</label>
-                  <input
-                    type="number"
-                    name="salary"
-                    value={editFormData.salary || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Joining Company Name</label>
-                  <select
-                    name="joining_company_name"
-                    value={editFormData.joining_company_name || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                  >
-                    <option value="">Select Company</option>
-                    {joiningCompanies.map((company) => (
-                      <option key={company.id} value={company.company_name}>
-                        {company.company_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Mode of Attendance</label>
-                  <select
-                    name="mode_of_attendance"
-                    value={editFormData.mode_of_attendance || 'Biometric'}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                  >
-                    <option value="Biometric">Biometric</option>
-                    <option value="Manual">Manual</option>
-                    <option value="Mobile App">Mobile App</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar No <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    name="aadhar_no"
-                    value={editFormData.aadhar_no || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                {/* Banking Information Section */}
-                <div className="lg:col-span-3 mt-2">
-                  <h3 className="text-md font-medium text-gray-700 mb-3 pb-2 border-b border-gray-200">Banking Information</h3>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Account No <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    name="current_account_no"
-                    value={editFormData.current_account_no || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    name="ifsc_code"
-                    value={editFormData.ifsc_code || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    name="branch_name"
-                    value={editFormData.branch_name || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode <span className="text-red-500">*</span></label>
-                  <select
-                    name="payment_mode"
-                    value={editFormData.payment_mode || 'Bank Transfer'}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  >
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Cash">Cash</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Beneficiary Name</label>
-                  <input
-                    type="text"
-                    name="beneficiary_name"
-                    value={editFormData.beneficiary_name || ''}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select
-                    name="status"
-                    value={editFormData.status || 'Active'}
-                    onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                    <option value="Left">Left</option>
-                  </select>
+                    <X size={20} />
+                  </button>
                 </div>
               </div>
-            </div>
 
-            <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 sticky bottom-0">
-              <button
-                type="button"
-                onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpdate}
-                disabled={saving || uploading}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
-              >
-                {(saving || uploading) && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
-                {uploading ? 'Uploading...' : saving ? 'Updating...' : 'Update Employee'}
-              </button>
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6">
+                <div className="space-y-6">
+                  {/* Documents Section */}
+                  <div className="bg-white border border-gray-200 shadow-sm p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
+                      <Upload size={16} />
+                      Documents
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                      {renderEditFileUpload('candidatePhoto', 'Photo', <User size={14} />)}
+                      {renderEditFileUpload('aadharFront', 'Aadhar Front', <Image size={14} />)}
+                      {renderEditFileUpload('aadharBack', 'Aadhar Back', <Image size={14} />)}
+                      {renderEditFileUpload('panCard', 'PAN Card', <CreditCard size={14} />)}
+                      {renderEditFileUpload('bankPassbook', 'Passbook', <BookOpen size={14} />)}
+                      {renderEditFileUpload('resume', 'Resume', <FileText size={14} />)}
+                    </div>
+                  </div>
+
+                  {/* Personal Information Section */}
+                  <div className="bg-white border border-gray-200 shadow-sm p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4 pb-2 border-b border-gray-100">
+                      Personal Information
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Employee ID</label>
+                        <input
+                          type="text"
+                          value={editingEmployee.employee_id}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Full Name <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          name="name_as_per_aadhar"
+                          value={editFormData.name_as_per_aadhar || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Father's Name <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          name="father_name"
+                          value={editFormData.father_name || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Date of Birth <span className="text-red-500">*</span></label>
+                        <input
+                          type="date"
+                          name="dob"
+                          value={editFormData.dob || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Gender <span className="text-red-500">*</span></label>
+                        <select
+                          name="gender"
+                          value={editFormData.gender || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        >
+                          <option value="">Select Gender</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mobile No <span className="text-red-500">*</span></label>
+                        <input
+                          type="tel"
+                          name="mobile_no"
+                          value={editFormData.mobile_no || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Email</label>
+                        <input
+                          type="email"
+                          name="candidate_email"
+                          value={editFormData.candidate_email || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Family Mobile No</label>
+                        <input
+                          type="tel"
+                          name="family_mobile_no"
+                          value={editFormData.family_mobile_no || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Employment Information Section */}
+                  <div className="bg-white border border-gray-200 shadow-sm p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4 pb-2 border-b border-gray-100">
+                      Employment Information
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Date of Joining <span className="text-red-500">*</span></label>
+                        <input
+                          type="date"
+                          name="date_of_joining"
+                          value={editFormData.date_of_joining || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Joining Place <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          name="joining_place"
+                          value={editFormData.joining_place || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Designation <span className="text-red-500">*</span></label>
+                        <select
+                          name="designation"
+                          value={editFormData.designation || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        >
+                          <option value="">Select Designation</option>
+                          <option value="Employee">Employee</option>
+                          <option value="Manager">Manager</option>
+                          <option value="HOD">HOD</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Salary</label>
+                        <input
+                          type="number"
+                          name="salary"
+                          value={editFormData.salary || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Joining Shop Name</label>
+                        <select
+                          name="joining_company_name"
+                          value={editFormData.joining_company_name || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                        >
+                          <option value="">Select Shop</option>
+                          {joiningCompanies.map((company) => (
+                            <option key={company.id} value={company.company_name}>
+                              {company.company_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mode of Attendance</label>
+                        <select
+                          name="mode_of_attendance"
+                          value={editFormData.mode_of_attendance || 'Biometric'}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                        >
+                          <option value="Biometric">Biometric</option>
+                          <option value="Manual">Manual</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Aadhar No <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          name="aadhar_no"
+                          value={editFormData.aadhar_no || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Banking Information Section */}
+                  <div className="bg-white border border-gray-200 shadow-sm p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4 pb-2 border-b border-gray-100">
+                      Banking Information
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Account No <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          name="current_account_no"
+                          value={editFormData.current_account_no || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">IFSC Code <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          name="ifsc_code"
+                          value={editFormData.ifsc_code || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Branch Name <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          name="branch_name"
+                          value={editFormData.branch_name || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Payment Mode <span className="text-red-500">*</span></label>
+                        <select
+                          name="payment_mode"
+                          value={editFormData.payment_mode || 'Bank Transfer'}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        >
+                          <option value="Bank Transfer">Bank Transfer</option>
+                          <option value="Cheque">Cheque</option>
+                          <option value="Cash">Cash</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Beneficiary Name</label>
+                        <input
+                          type="text"
+                          name="beneficiary_name"
+                          value={editFormData.beneficiary_name || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Status</label>
+                        <select
+                          name="status"
+                          value={editFormData.status || 'Active'}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                        >
+                          <option value="Active">Active</option>
+                          <option value="Inactive">Inactive</option>
+                          <option value="Left">Left</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 p-4 border-t bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditPanel(false)
+                    setEditingEmployee(null)
+                  }}
+                  className="px-4 py-2 text-sm text-gray-600 border border-gray-300  hover:bg-gray-200 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdate}
+                  disabled={saving || uploading}
+                  className="px-6 py-2 text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2 font-medium shadow-sm"
+                >
+                  {(saving || uploading) && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+                  {uploading ? 'Uploading...' : saving ? 'Updating...' : 'Update Employee'}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Details Modal */}
-      {showDetailsModal && selectedEmployee && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowDetailsModal(false)}>
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white">
-              <h2 className="text-lg font-semibold">Employee Details</h2>
-              <button onClick={() => setShowDetailsModal(false)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
-            </div>
-            <div className="p-4">
-              {/* Employee Photo */}
-              {selectedEmployee.candidate_photo && (
-                <div className="mb-4 flex justify-center">
-                  <img
-                    src={selectedEmployee.candidate_photo}
-                    alt={selectedEmployee.name_as_per_aadhar}
-                    className="w-24 h-24 rounded-full object-cover border-2 border-indigo-200"
-                  />
+      {/* Details Slide Panel - Right to Left */}
+      <div className={`fixed inset-0 overflow-hidden z-50 ${showDetailsModal ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+        {/* Overlay */}
+        <div
+          className={`absolute inset-0 bg-black transition-opacity duration-300 ${showDetailsModal ? 'opacity-50' : 'opacity-0'}`}
+          onClick={() => {
+            setShowDetailsModal(false)
+            setSelectedEmployee(null)
+          }}
+        />
+
+        {/* Slide Panel */}
+        <div className={`absolute inset-y-0 right-0 max-w-5xl w-full bg-white shadow-2xl transform transition-transform duration-300 ease-in-out ${showDetailsModal ? 'translate-x-0' : 'translate-x-full'}`}>
+          {selectedEmployee && (
+            <div className="h-full flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b bg-gray-50 text-gray-900">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowDetailsModal(false)
+                      setSelectedEmployee(null)
+                    }}
+                    className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  {selectedEmployee.candidate_photo ? (
+                    <img
+                      src={selectedEmployee.candidate_photo}
+                      alt={selectedEmployee.name_as_per_aadhar}
+                      className="w-10 h-10 rounded-full object-cover border border-gray-200"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">
+                      {selectedEmployee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="font-semibold text-base text-gray-900">{selectedEmployee.name_as_per_aadhar}</h3>
+                    <p className="text-xs text-gray-500">{selectedEmployee.designation} • {selectedEmployee.joining_place}</p>
+                  </div>
                 </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-xs text-gray-500">Employee ID</label><p className="font-medium">{selectedEmployee.employee_id}</p></div>
-                <div><label className="text-xs text-gray-500">Full Name</label><p className="font-medium">{selectedEmployee.name_as_per_aadhar}</p></div>
-                <div><label className="text-xs text-gray-500">Father's Name</label><p>{selectedEmployee.father_name || '-'}</p></div>
-                <div><label className="text-xs text-gray-500">Date of Birth</label><p>{selectedEmployee.dob || '-'}</p></div>
-                <div><label className="text-xs text-gray-500">Gender</label><p>{selectedEmployee.gender || '-'}</p></div>
-                <div><label className="text-xs text-gray-500">Mobile No</label><p>{selectedEmployee.mobile_no}</p></div>
-                <div><label className="text-xs text-gray-500">Email</label><p>{selectedEmployee.candidate_email}</p></div>
-                <div><label className="text-xs text-gray-500">Date of Joining</label><p>{selectedEmployee.date_of_joining}</p></div>
-                <div><label className="text-xs text-gray-500">Joining Place</label><p>{selectedEmployee.joining_place}</p></div>
-                <div><label className="text-xs text-gray-500">Designation</label><p>{selectedEmployee.designation}</p></div>
-                <div><label className="text-xs text-gray-500">Salary</label><p>₹{selectedEmployee.salary?.toLocaleString() || '-'}</p></div>
-                <div><label className="text-xs text-gray-500">Status</label>
-                  <p className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${selectedEmployee.status === 'Active' ? 'bg-green-100 text-green-700' :
-                    selectedEmployee.status === 'Inactive' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>{selectedEmployee.status}</p>
-                </div>
-                <div><label className="text-xs text-gray-500">Aadhar No</label><p>{selectedEmployee.aadhar_no || '-'}</p></div>
-                <div><label className="text-xs text-gray-500">Account No</label><p>{selectedEmployee.current_account_no}</p></div>
-                <div><label className="text-xs text-gray-500">IFSC Code</label><p>{selectedEmployee.ifsc_code}</p></div>
-                <div><label className="text-xs text-gray-500">Branch Name</label><p>{selectedEmployee.branch_name}</p></div>
-                <div><label className="text-xs text-gray-500">Payment Mode</label><p>{selectedEmployee.payment_mode}</p></div>
-                <div><label className="text-xs text-gray-500">Beneficiary Name</label><p>{selectedEmployee.beneficiary_name || '-'}</p></div>
-              </div>
-
-              {/* Document Links */}
-              <div className="mt-4 pt-4 border-t">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Documents</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {selectedEmployee.aadhar_front_image && (
-                    <a href={selectedEmployee.aadhar_front_image} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                      <Image size={14} /> Aadhar Front
-                    </a>
-                  )}
-                  {selectedEmployee.aadhar_back_image && (
-                    <a href={selectedEmployee.aadhar_back_image} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                      <Image size={14} /> Aadhar Back
-                    </a>
-                  )}
-                  {selectedEmployee.pan_card_image && (
-                    <a href={selectedEmployee.pan_card_image} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                      <CreditCard size={14} /> PAN Card
-                    </a>
-                  )}
-                  {selectedEmployee.bank_passbook_image && (
-                    <a href={selectedEmployee.bank_passbook_image} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                      <BookOpen size={14} /> Bank Passbook
-                    </a>
-                  )}
-                  {selectedEmployee.resume_url && (
-                    <a href={selectedEmployee.resume_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                      <FileText size={14} /> Resume
-                    </a>
-                  )}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 bg-gray-200/50 px-3 py-1 rounded-full text-gray-700">
+                    <span className="text-xs font-medium">ID:</span>
+                    <span className="text-xs font-semibold">{selectedEmployee.employee_id}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowDetailsModal(false)
+                      setSelectedEmployee(null)
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
                 </div>
               </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6">
+                <div className="space-y-6">
+                  {/* Personal Information */}
+                  <div className="bg-white  border border-gray-200 shadow-sm p-6">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-100">
+                      Personal Information
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Full Name</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.name_as_per_aadhar || ''}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Father's Name</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.father_name || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Date of Birth</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.dob || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Gender</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.gender || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Mobile No</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.mobile_no || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Email</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.candidate_email || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Family Mobile No</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.family_mobile_no || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Employment Information */}
+                  <div className="bg-white  border border-gray-200 shadow-sm p-6">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-100">
+                      Employment Information
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Date of Joining</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.date_of_joining || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Joining Place</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.joining_place || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Designation</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.designation || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Salary</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.salary ? `₹${selectedEmployee.salary.toLocaleString()}` : '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Joining Shop Name</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.joining_company_name || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Mode of Attendance</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.mode_of_attendance || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Aadhar No</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.aadhar_no || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Status</label>
+                        <div className="pt-1.5">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${selectedEmployee.status === 'Active' ? 'bg-green-100 text-green-700' :
+                            selectedEmployee.status === 'Inactive' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>{selectedEmployee.status}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Banking Information */}
+                  <div className="bg-white  border border-gray-200 shadow-sm p-6">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-100">
+                      Banking Information
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Account No</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.current_account_no || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">IFSC Code</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.ifsc_code || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Branch Name</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.branch_name || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Payment Mode</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.payment_mode || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Beneficiary Name</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.beneficiary_name || '--'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Documents */}
+                  <div className="bg-white  border border-gray-200 shadow-sm p-6">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-100">
+                      Documents
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                      {selectedEmployee.candidate_photo && (
+                        <a
+                          href={selectedEmployee.candidate_photo}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 border border-gray-200  hover:bg-indigo-50/50 hover:border-indigo-200 transition-colors"
+                        >
+                          <div className="p-2 bg-indigo-50  text-indigo-600">
+                            <User size={16} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-700 truncate">Employee Photo</p>
+                            <span className="text-[10px] text-gray-400">Click to view</span>
+                          </div>
+                          <ExternalLink size={14} className="text-gray-400 flex-shrink-0" />
+                        </a>
+                      )}
+                      {selectedEmployee.aadhar_front_image && (
+                        <a
+                          href={selectedEmployee.aadhar_front_image}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 border border-gray-200  hover:bg-indigo-50/50 hover:border-indigo-200 transition-colors"
+                        >
+                          <div className="p-2 bg-indigo-50  text-indigo-600">
+                            <Image size={16} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-700 truncate">Aadhar Front</p>
+                            <span className="text-[10px] text-gray-400">Click to view</span>
+                          </div>
+                          <ExternalLink size={14} className="text-gray-400 flex-shrink-0" />
+                        </a>
+                      )}
+                      {selectedEmployee.aadhar_back_image && (
+                        <a
+                          href={selectedEmployee.aadhar_back_image}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 border border-gray-200  hover:bg-indigo-50/50 hover:border-indigo-200 transition-colors"
+                        >
+                          <div className="p-2 bg-indigo-50  text-indigo-600">
+                            <Image size={16} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-700 truncate">Aadhar Back</p>
+                            <span className="text-[10px] text-gray-400">Click to view</span>
+                          </div>
+                          <ExternalLink size={14} className="text-gray-400 flex-shrink-0" />
+                        </a>
+                      )}
+                      {selectedEmployee.pan_card_image && (
+                        <a
+                          href={selectedEmployee.pan_card_image}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 border border-gray-200  hover:bg-indigo-50/50 hover:border-indigo-200 transition-colors"
+                        >
+                          <div className="p-2 bg-indigo-50  text-indigo-600">
+                            <CreditCard size={16} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-700 truncate">PAN Card</p>
+                            <span className="text-[10px] text-gray-400">Click to view</span>
+                          </div>
+                          <ExternalLink size={14} className="text-gray-400 flex-shrink-0" />
+                        </a>
+                      )}
+                      {selectedEmployee.bank_passbook_image && (
+                        <a
+                          href={selectedEmployee.bank_passbook_image}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 border border-gray-200  hover:bg-indigo-50/50 hover:border-indigo-200 transition-colors"
+                        >
+                          <div className="p-2 bg-indigo-50  text-indigo-600">
+                            <BookOpen size={16} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-700 truncate">Bank Passbook</p>
+                            <span className="text-[10px] text-gray-400">Click to view</span>
+                          </div>
+                          <ExternalLink size={14} className="text-gray-400 flex-shrink-0" />
+                        </a>
+                      )}
+                      {selectedEmployee.resume_url && (
+                        <a
+                          href={selectedEmployee.resume_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 border border-gray-200  hover:bg-indigo-50/50 hover:border-indigo-200 transition-colors"
+                        >
+                          <div className="p-2 bg-indigo-50  text-indigo-600">
+                            <FileText size={16} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-700 truncate">Resume</p>
+                            <span className="text-[10px] text-gray-400">Click to view</span>
+                          </div>
+                          <ExternalLink size={14} className="text-gray-400 flex-shrink-0" />
+                        </a>
+                      )}
+                      {!(selectedEmployee.candidate_photo || selectedEmployee.aadhar_front_image || selectedEmployee.aadhar_back_image || selectedEmployee.pan_card_image || selectedEmployee.bank_passbook_image || selectedEmployee.resume_url) && (
+                        <div className="col-span-full py-4 text-center text-sm text-gray-400 bg-gray-50 border border-dashed border-gray-200 ">
+                          No documents uploaded
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 p-4 border-t bg-gray-50">
+                <button
+                  onClick={() => {
+                    setShowDetailsModal(false)
+                    setSelectedEmployee(null)
+                  }}
+                  className="px-6 py-2 text-sm bg-gray-200 text-gray-700  hover:bg-gray-300 transition-colors font-medium shadow-sm"
+                >
+                  Close
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
