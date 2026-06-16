@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Upload, Image, User, CreditCard, BookOpen, FileText, X, CheckCircle, ArrowRight } from 'lucide-react'
 
@@ -8,6 +8,25 @@ export default function PublicRegister() {
   const [submitted, setSubmitted] = useState(false)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [joiningCompanies, setJoiningCompanies] = useState([])
+
+  useEffect(() => {
+    fetchJoiningCompanies()
+  }, [])
+
+  const fetchJoiningCompanies = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('joining_company_names')
+        .select('*')
+        .order('company_name', { ascending: true })
+
+      if (error) throw error
+      setJoiningCompanies(data || [])
+    } catch (error) {
+      console.error('Error fetching joining companies:', error)
+    }
+  }
 
   const [filePreviews, setFilePreviews] = useState({
     aadharFront: null,
@@ -39,6 +58,7 @@ export default function PublicRegister() {
     ifsc_code: '',
     branch_name: '',
     payment_mode: 'Bank Transfer',
+    beneficiary_name: '',
     status: 'Active',
     aadharFront: null,
     aadharBack: null,
@@ -179,6 +199,7 @@ export default function PublicRegister() {
         ifsc_code: formData.ifsc_code,
         branch_name: formData.branch_name,
         payment_mode: formData.payment_mode,
+        beneficiary_name: formData.beneficiary_name || null,
         status: formData.status,
         aadhar_front_image: uploadedUrls.aadharFront || null,
         aadhar_back_image: uploadedUrls.aadharBack || null,
@@ -324,13 +345,13 @@ export default function PublicRegister() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Full Name (As per Aadhar) <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Full Name <span className="text-red-500">*</span></label>
                 <input type="text" name="name_as_per_aadhar" value={formData.name_as_per_aadhar} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Father's Name</label>
-                <input type="text" name="father_name" value={formData.father_name} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Father's Name <span className="text-red-500">*</span></label>
+                <input type="text" name="father_name" value={formData.father_name} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
               </div>
 
               <div>
@@ -362,19 +383,14 @@ export default function PublicRegister() {
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">Family Mobile No</label>
                 <input type="tel" name="family_mobile_no" value={formData.family_mobile_no} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" />
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Aadhar No <span className="text-red-500">*</span></label>
-                <input type="text" name="aadhar_no" value={formData.aadhar_no} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
-              </div>
             </div>
           </div>
 
-          {/* Hiring / Joining info (limited fields for candidate) */}
+          {/* Employment Information Section */}
           <div className="space-y-4">
             <h3 className="text-base font-bold text-gray-800 pb-2 border-b border-gray-200 flex items-center gap-1.5">
               <ArrowRight size={18} className="text-indigo-600" />
-              Employment Context
+              Employment Information
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               <div>
@@ -384,21 +400,62 @@ export default function PublicRegister() {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">Joining Place <span className="text-red-500">*</span></label>
-                <input type="text" name="joining_place" value={formData.joining_place} onChange={handleInputChange} placeholder="City / Store" className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
+                <input type="text" name="joining_place" value={formData.joining_place} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">Designation <span className="text-red-500">*</span></label>
-                <input type="text" name="designation" value={formData.designation} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
+                <select
+                  name="designation"
+                  value={formData.designation}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                  required
+                >
+                  <option value="">Select Designation</option>
+                  <option value="Employee">Employee</option>
+                  <option value="Manager">Manager</option>
+                  <option value="HOD">HOD</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Joining Shop Name</label>
+                <select
+                  name="joining_company_name"
+                  value={formData.joining_company_name}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                >
+                  <option value="">Select Shop</option>
+                  {joiningCompanies.map((company) => (
+                    <option key={company.id} value={company.company_name}>
+                      {company.company_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mode of Attendance</label>
+                <select name="mode_of_attendance" value={formData.mode_of_attendance} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 bg-white">
+                  <option value="Biometric">Biometric</option>
+                  <option value="Manual">Manual</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Aadhar No <span className="text-red-500">*</span></label>
+                <input type="text" name="aadhar_no" value={formData.aadhar_no} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
               </div>
             </div>
           </div>
 
-          {/* Banking Details */}
+          {/* Banking Information Section */}
           <div className="space-y-4">
             <h3 className="text-base font-bold text-gray-800 pb-2 border-b border-gray-200 flex items-center gap-1.5">
               <BookOpen size={18} className="text-indigo-600" />
-              Banking Details
+              Banking Information
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -425,14 +482,28 @@ export default function PublicRegister() {
                   <option value="Cash">Cash</option>
                 </select>
               </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Beneficiary Name</label>
+                <input type="text" name="beneficiary_name" value={formData.beneficiary_name} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Status</label>
+                <select name="status" value={formData.status} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 bg-white">
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                  <option value="Left">Left</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          {/* Upload Documents Section */}
+          {/* Documents Section */}
           <div className="space-y-4">
             <h3 className="text-base font-bold text-gray-800 pb-2 border-b border-gray-200 flex items-center gap-1.5">
               <Upload size={18} className="text-indigo-600" />
-              Required Documents
+              Documents
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">

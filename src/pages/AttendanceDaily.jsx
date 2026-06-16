@@ -14,6 +14,97 @@ const DEVICES = [
 
 const JOINING_API_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch';
 
+// IST Timezone offset (UTC+5:30)
+const IST_OFFSET = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes in milliseconds
+
+// Convert UTC to IST
+const convertUTCToIST = (utcDateStr) => {
+  if (!utcDateStr || utcDateStr === '-') return '-';
+  try {
+    // Parse the UTC date string
+    const utcDate = new Date(utcDateStr);
+    if (isNaN(utcDate.getTime())) return utcDateStr;
+
+    // Add IST offset (UTC+5:30)
+    const istDate = new Date(utcDate.getTime() + IST_OFFSET);
+    return istDate;
+  } catch (e) {
+    return utcDateStr;
+  }
+};
+
+// Format time in IST
+const formatTimeIST = (utcDateStr) => {
+  if (!utcDateStr || utcDateStr === '-') return '-';
+  try {
+    const istDate = convertUTCToIST(utcDateStr);
+    if (istDate === '-' || typeof istDate === 'string') return utcDateStr;
+
+    const hours = istDate.getHours();
+    const minutes = istDate.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const h12 = hours % 12 || 12;
+    return `${h12}:${String(minutes).padStart(2, '0')} ${ampm}`;
+  } catch (e) {
+    return utcDateStr;
+  }
+};
+
+// Format full date-time in IST
+const formatDateTimeIST = (utcDateStr) => {
+  if (!utcDateStr || utcDateStr === '-') return '-';
+  try {
+    const istDate = convertUTCToIST(utcDateStr);
+    if (istDate === '-' || typeof istDate === 'string') return utcDateStr;
+
+    const yyyy = istDate.getFullYear();
+    const mm = String(istDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(istDate.getDate()).padStart(2, '0');
+    const hours = istDate.getHours();
+    const minutes = istDate.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const h12 = hours % 12 || 12;
+    return `${yyyy}-${mm}-${dd} ${h12}:${String(minutes).padStart(2, '0')} ${ampm}`;
+  } catch (e) {
+    return utcDateStr;
+  }
+};
+
+// Format date for display (without time)
+const formatDateIST = (utcDateStr) => {
+  if (!utcDateStr || utcDateStr === '-') return '-';
+  try {
+    const istDate = convertUTCToIST(utcDateStr);
+    if (istDate === '-' || typeof istDate === 'string') return utcDateStr;
+
+    const yyyy = istDate.getFullYear();
+    const mm = String(istDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(istDate.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  } catch (e) {
+    return utcDateStr;
+  }
+};
+
+// Check if punch is late (after 10:10 AM IST)
+const isLatePunch = (utcDateStr) => {
+  if (!utcDateStr || utcDateStr === '-') return false;
+  try {
+    const istDate = convertUTCToIST(utcDateStr);
+    if (istDate === '-' || typeof istDate === 'string') return false;
+
+    const hours = istDate.getHours();
+    const minutes = istDate.getMinutes();
+    const totalMinutes = hours * 60 + minutes;
+
+    // 10:10 AM IST = 10*60 + 10 = 610 minutes
+    const thresholdMinutes = 10 * 60 + 10;
+    return totalMinutes > thresholdMinutes;
+  } catch (e) {
+    return false;
+  }
+};
+
 // Status colors and labels - compact version
 const STATUS_CONFIG = {
   'Present': { color: 'bg-green-100 text-green-700', label: 'P', fullLabel: 'Present', bgColor: 'bg-green-200' },
@@ -78,26 +169,13 @@ const AttendanceDaily = () => {
   const formatTime12h = (dateStr) => {
     if (!dateStr || dateStr === '-') return '-';
     try {
-      const parts = dateStr.trim().split(' ');
-      let timePart = parts[1] || parts[0];
-      if (!timePart) return dateStr;
-
-      const hasAMPM = timePart.toLowerCase().includes('am') || timePart.toLowerCase().includes('pm');
-      if (hasAMPM && !dateStr.includes('-')) {
-        return timePart.toUpperCase();
+      // If it's already a formatted string, return as is
+      if (dateStr.includes('AM') || dateStr.includes('PM')) {
+        return dateStr;
       }
 
-      if (!timePart.includes(':')) return dateStr;
-
-      let [hoursPart, minutesFull] = timePart.split(':');
-      let hours = parseInt(hoursPart);
-      let minutes = minutesFull ? minutesFull.slice(0, 2) : '00';
-
-      const isPM = timePart.toLowerCase().includes('pm') || hours >= 12;
-      const ampm = isPM ? 'PM' : 'AM';
-      const h12 = hours % 12 || 12;
-
-      return `${h12}:${minutes.padStart(2, '0')} ${ampm}`;
+      // Convert UTC to IST and format
+      return formatTimeIST(dateStr);
     } catch (e) {
       return dateStr;
     }
@@ -106,9 +184,11 @@ const AttendanceDaily = () => {
   const formatDateDisplay = (dateStr) => {
     if (!dateStr) return '-';
     try {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return dateStr;
-      return date.toLocaleDateString('en-IN', {
+      // Convert UTC to IST for date display
+      const istDate = convertUTCToIST(dateStr);
+      if (istDate === '-' || typeof istDate === 'string') return dateStr;
+
+      return istDate.toLocaleDateString('en-IN', {
         day: '2-digit',
         month: 'short',
         year: 'numeric'
@@ -133,9 +213,13 @@ const AttendanceDaily = () => {
       const parse = (s) => {
         if (!s || s === '-') return null;
         try {
+          // Try to parse as UTC date first
           if (s.includes('-') && s.includes(':')) {
             const d = new Date(s.replace(/-/g, '/'));
-            if (!isNaN(d.getTime())) return d;
+            if (!isNaN(d.getTime())) {
+              // Convert UTC to IST for comparison
+              return new Date(d.getTime() + IST_OFFSET);
+            }
           }
 
           let cleanTime = s.trim().toUpperCase();
@@ -176,7 +260,10 @@ const AttendanceDaily = () => {
         try {
           if (s.includes('-') && s.includes(':')) {
             const d = new Date(s.replace(/-/g, '/'));
-            if (!isNaN(d.getTime())) return d;
+            if (!isNaN(d.getTime())) {
+              // Convert UTC to IST for comparison
+              return new Date(d.getTime() + IST_OFFSET);
+            }
           }
           let cleanTime = s.trim().toUpperCase();
           const isPM = cleanTime.includes('PM');
@@ -223,29 +310,45 @@ const AttendanceDaily = () => {
     if (!aggregatedData || aggregatedData.length === 0) return [];
 
     try {
-      const rows = aggregatedData.map(item => ({
-        employee_id: item.EmployeeID,
-        employee_name: item.EmployeeName,
-        attendance_date: item.Date,
-        day: item.Day,
-        designation: item.Designation,
-        store_name: item.StoreName,
-        device_id: item.DeviceID,
-        serial_number: item.AssignedSerial || item.SerialNumber,
-        in_time: item.InTime !== '-' ? new Date(item.InTime.replace(/-/g, '/')) : null,
-        out_time: item.OutTime !== '-' ? new Date(item.OutTime.replace(/-/g, '/')) : null,
-        working_hour: item.WorkingHour,
-        overtime: item.Overtime,
-        late_minute: item.LateMinute,
-        status: item.Status,
-        standard_lunch: item.StandardLunch,
-        waste_time: item.WasteTime,
-        punch_log: item.PunchLog,
-        punch_log_status: item.PunchLogStatus,
-        punch_miss: item.PunchMiss,
-        punch_miss_msg: item.PunchMissMsg,
-        updated_at: new Date()
-      }));
+      const rows = aggregatedData.map(item => {
+        // Parse UTC times and store as UTC in DB
+        const parseUTC = (timeStr) => {
+          if (!timeStr || timeStr === '-') return null;
+          try {
+            if (timeStr.includes('-') && timeStr.includes(':')) {
+              const d = new Date(timeStr.replace(/-/g, '/'));
+              if (!isNaN(d.getTime())) return d;
+            }
+            return null;
+          } catch (e) {
+            return null;
+          }
+        };
+
+        return {
+          employee_id: item.EmployeeID,
+          employee_name: item.EmployeeName,
+          attendance_date: item.Date,
+          day: item.Day,
+          designation: item.Designation,
+          store_name: item.StoreName,
+          device_id: item.DeviceID,
+          serial_number: item.AssignedSerial || item.SerialNumber,
+          in_time: parseUTC(item.InTime),
+          out_time: parseUTC(item.OutTime),
+          working_hour: item.WorkingHour,
+          overtime: item.Overtime,
+          late_minute: item.LateMinute,
+          status: item.Status,
+          standard_lunch: item.StandardLunch,
+          waste_time: item.WasteTime,
+          punch_log: item.PunchLog,
+          punch_log_status: item.PunchLogStatus,
+          punch_miss: item.PunchMiss,
+          punch_miss_msg: item.PunchMissMsg,
+          updated_at: new Date()
+        };
+      });
 
       const { data, error } = await supabase
         .from('attendance_logs')
@@ -282,12 +385,18 @@ const AttendanceDaily = () => {
       const batch = changedRows.slice(i, i + batchSize);
 
       await Promise.all(batch.map(async (item) => {
+        // Format times in IST for Google Sheet
+        const formatTimeForSheet = (time) => {
+          if (!time) return '-';
+          return formatTimeIST(time);
+        };
+
         const rowData = [
           item.employee_id || item.EmployeeID || '-',
           item.employee_name || item.EmployeeName || '-',
           item.attendance_date || item.Date || '-',
-          formatTime12h(item.in_time || item.InTime),
-          formatTime12h(item.out_time || item.OutTime),
+          formatTimeForSheet(item.in_time || item.InTime),
+          formatTimeForSheet(item.out_time || item.OutTime),
           item.working_hour || item.WorkingHour || '-',
           item.store_name || item.StoreName || '-'
         ];
@@ -564,6 +673,7 @@ const AttendanceDaily = () => {
         const displayDeviceId = dMap ? dMap.deviceId : '-';
         const displayAssignedSerial = dMap ? dMap.serialNo : serial;
 
+        // Calculate late minutes using IST
         const lateMins = calculateLateMinutes(inTime);
         const workHrs = punchMiss === 'Yes' ? '00:00:00' : calculateWorkHours(inTime, outTime);
 
@@ -587,7 +697,7 @@ const AttendanceDaily = () => {
         if (punchMiss === 'Yes') status = 'Absent';
         if (lateMins > 0) status = 'Late';
 
-        const punchLogStr = logs.map(l => formatTime12h(l)).join(' | ');
+        const punchLogStr = logs.map(l => formatTimeIST(l)).join(' | ');
 
         let punchLogStatus = 'Bahar';
         if (logs.length > 0) {
@@ -661,7 +771,7 @@ const AttendanceDaily = () => {
         return {
           date: log.LogDate.split(' ')[0],
           day: dateObj.toLocaleDateString('en-US', { weekday: 'long' }),
-          time: log.LogDate.split(' ')[1] || '',
+          time: formatTimeIST(log.LogDate), // Convert to IST
           employeeId: displayCode,
           employeeName: displayName,
           storeName: displayStore,
@@ -709,8 +819,13 @@ const AttendanceDaily = () => {
         updated_at: new Date()
       };
 
-      if (inTime !== undefined) updateData.in_time = inTime ? new Date(inTime.replace(/-/g, '/')) : null;
-      if (outTime !== undefined) updateData.out_time = outTime ? new Date(outTime.replace(/-/g, '/')) : null;
+      // Store times in UTC
+      if (inTime !== undefined) {
+        updateData.in_time = inTime ? new Date(inTime.replace(/-/g, '/')) : null;
+      }
+      if (outTime !== undefined) {
+        updateData.out_time = outTime ? new Date(outTime.replace(/-/g, '/')) : null;
+      }
 
       if (inTime || outTime) {
         if (inTime && outTime && inTime !== '-' && outTime !== '-') {
@@ -796,13 +911,15 @@ const AttendanceDaily = () => {
     const formatInputVal = (t) => {
       if (!t || t === '-') return '';
       try {
-        const d = new Date(t);
-        if (isNaN(d.getTime())) return '';
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        const hh = String(d.getHours()).padStart(2, '0');
-        const min = String(d.getMinutes()).padStart(2, '0');
+        // Convert UTC to IST for display in datetime-local input
+        const istDate = convertUTCToIST(t);
+        if (istDate === '-' || typeof istDate === 'string') return '';
+
+        const yyyy = istDate.getFullYear();
+        const mm = String(istDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(istDate.getDate()).padStart(2, '0');
+        const hh = String(istDate.getHours()).padStart(2, '0');
+        const min = String(istDate.getMinutes()).padStart(2, '0');
         return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
       } catch (e) {
         return '';
@@ -853,7 +970,15 @@ const AttendanceDaily = () => {
     const record = attendanceData.find(
       a => a.employee_id === employeeId && a.attendance_date === date
     );
-    if (record) return record;
+    if (record) {
+      // Check if the in_time is late in IST
+      const isLate = record.in_time ? isLatePunch(record.in_time) : false;
+      // If the record is 'Present' but late, override status to 'Late'
+      if (isLate && (record.status === 'Present' || !record.status)) {
+        return { ...record, status: 'Late' };
+      }
+      return record;
+    }
     if (date > todayDate) {
       return { status: 'Future', in_time: '-', out_time: '-' };
     }
@@ -911,8 +1036,8 @@ const AttendanceDaily = () => {
           'Date': selectedDate,
           'Day': dateObj.toLocaleDateString('en-US', { weekday: 'long' }),
           'Status': attendance.status === 'Future' ? '' : attendance.status,
-          'IN Time': formatTime12h(attendance.in_time),
-          'OUT Time': formatTime12h(attendance.out_time),
+          'IN Time': formatTimeIST(attendance.in_time),
+          'OUT Time': formatTimeIST(attendance.out_time),
           'Working Hours': attendance.working_hour || '-',
           'Late Minutes': attendance.late_minute || 0,
           'Standard Lunch': attendance.standard_lunch || '-',
@@ -936,8 +1061,8 @@ const AttendanceDaily = () => {
             'Date': day.fullDate,
             'Day': new Date(day.fullDate).toLocaleDateString('en-US', { weekday: 'long' }),
             'Status': attendance.status === 'Future' ? '' : attendance.status,
-            'IN Time': formatTime12h(attendance.in_time),
-            'OUT Time': formatTime12h(attendance.out_time),
+            'IN Time': formatTimeIST(attendance.in_time),
+            'OUT Time': formatTimeIST(attendance.out_time),
             'Working Hours': attendance.working_hour || '-',
             'Late Minutes': attendance.late_minute || 0
           });
@@ -1063,6 +1188,10 @@ const AttendanceDaily = () => {
               <span className="text-[10px] text-gray-600">{config.fullLabel}</span>
             </div>
           ))}
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded bg-orange-100 border border-orange-300"></div>
+            <span className="text-[10px] text-orange-600 font-medium">Late (After 10:10 AM IST)</span>
+          </div>
         </div>
       </div>
 
@@ -1180,9 +1309,6 @@ const AttendanceDaily = () => {
                         {days.map((day, idx) => {
                           const attendance = getAttendanceForDate(employee.id, day.fullDate);
                           let status = attendance.status || 'Absent';
-                          if (attendance.late_minute > 0) {
-                            status = 'Late';
-                          }
                           const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
 
                           if (status === 'Present') presentCount++;
@@ -1236,8 +1362,8 @@ const AttendanceDaily = () => {
                     <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[10vw] z-10">Employee</th>
                     <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[100px] z-10">Store</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[80px] z-10">Status</th>
-                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">In Time</th>
-                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">Out Time</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">In Time (IST)</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">Out Time (IST)</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[70px] z-10">Hours</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[60px] z-10">Late</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[50px] z-10">Action</th>
@@ -1264,9 +1390,6 @@ const AttendanceDaily = () => {
                     filteredEmployees.map((employee, idx) => {
                       const attendance = getAttendanceForDate(employee.id, selectedDate);
                       let status = attendance.status || 'Absent';
-                      if (attendance.late_minute > 0) {
-                        status = 'Late';
-                      }
                       const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
 
                       return (
@@ -1289,8 +1412,12 @@ const AttendanceDaily = () => {
                               {config.fullLabel}
                             </span>
                           </td>
-                          <td className="px-2 py-1.5 text-center text-[10px] font-mono">{formatTime12h(attendance.in_time)}</td>
-                          <td className="px-2 py-1.5 text-center text-[10px] font-mono">{formatTime12h(attendance.out_time)}</td>
+                          <td className="px-2 py-1.5 text-center text-[10px] font-mono">
+                            {attendance.in_time ? formatTimeIST(attendance.in_time) : '-'}
+                          </td>
+                          <td className="px-2 py-1.5 text-center text-[10px] font-mono">
+                            {attendance.out_time ? formatTimeIST(attendance.out_time) : '-'}
+                          </td>
                           <td className="px-2 py-1.5 text-center text-[10px] font-semibold">{attendance.working_hour || '-'}</td>
                           <td className="px-2 py-1.5 text-center text-[10px]">
                             {attendance.late_minute > 0 ? (
@@ -1446,7 +1573,7 @@ const AttendanceDaily = () => {
 
                       {/* Clock In */}
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Clock In <span className="text-red-500">*</span></label>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Clock In (IST) <span className="text-red-500">*</span></label>
                         <input
                           type="datetime-local"
                           value={tempInTime}
@@ -1457,7 +1584,7 @@ const AttendanceDaily = () => {
 
                       {/* Clock Out */}
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Clock Out</label>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Clock Out (IST)</label>
                         <input
                           type="datetime-local"
                           value={tempOutTime}
@@ -1581,7 +1708,7 @@ const AttendanceDaily = () => {
                     </div>
 
                     <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Punch Logs</h4>
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Punch Logs (IST)</h4>
                       {selectedEmployee.attendance?.punch_log ? (
                         <div className="bg-white rounded p-3 border border-gray-200 h-[140px] overflow-y-auto">
                           <p className="text-xs font-mono text-gray-700 whitespace-pre-line leading-relaxed">
@@ -1627,7 +1754,7 @@ const AttendanceDaily = () => {
         <div className="mt-3">
           <details className="bg-white rounded-md border border-gray-200">
             <summary className="px-2 py-1.5 cursor-pointer hover:bg-gray-50 text-xs font-medium text-gray-700">
-              Raw Punch Logs ({rawLogs.length})
+              Raw Punch Logs (IST) ({rawLogs.length})
             </summary>
             <div className="overflow-x-auto p-2 border-t">
               <table className="w-full text-xs">
@@ -1635,7 +1762,7 @@ const AttendanceDaily = () => {
                   <tr>
                     <th className="text-left px-2 py-1 text-[10px] text-gray-600">Date</th>
                     <th className="text-left px-2 py-1 text-[10px] text-gray-600">Day</th>
-                    <th className="text-left px-2 py-1 text-[10px] text-gray-600">Time</th>
+                    <th className="text-left px-2 py-1 text-[10px] text-gray-600">Time (IST)</th>
                     <th className="text-left px-2 py-1 text-[10px] text-gray-600">Employee</th>
                     <th className="text-left px-2 py-1 text-[10px] text-gray-600">Store</th>
                   </tr>
@@ -1645,7 +1772,7 @@ const AttendanceDaily = () => {
                     <tr key={idx} className="hover:bg-gray-50">
                       <td className="px-2 py-1 text-[10px] text-gray-700">{log.date}</td>
                       <td className="px-2 py-1 text-[10px] text-gray-500">{log.day}</td>
-                      <td className="px-2 py-1 text-[10px] font-mono font-medium text-indigo-600">{formatTime12h(log.time)}</td>
+                      <td className="px-2 py-1 text-[10px] font-mono font-medium text-indigo-600">{log.time}</td>
                       <td className="px-2 py-1 text-[10px] text-gray-900">{log.employeeName}</td>
                       <td className="px-2 py-1 text-[10px] text-gray-600">{log.storeName}</td>
                     </tr>
@@ -1730,7 +1857,7 @@ const AttendanceDaily = () => {
               {markStatus !== 'Absent' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">In Time</label>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">In Time (IST)</label>
                     <input
                       type="datetime-local"
                       value={markInTime}
@@ -1740,7 +1867,7 @@ const AttendanceDaily = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Out Time</label>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Out Time (IST)</label>
                     <input
                       type="datetime-local"
                       value={markOutTime}

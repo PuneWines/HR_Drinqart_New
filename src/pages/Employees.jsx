@@ -61,6 +61,7 @@ export default function EmployeeManagement() {
     ifsc_code: '',
     branch_name: '',
     payment_mode: 'Bank Transfer',
+    beneficiary_name: '',
     status: 'Active',
     // Document files (File objects)
     aadharFront: null,
@@ -399,6 +400,7 @@ export default function EmployeeManagement() {
         ifsc_code: formData.ifsc_code,
         branch_name: formData.branch_name,
         payment_mode: formData.payment_mode,
+        beneficiary_name: formData.beneficiary_name || null,
         status: formData.status,
         aadhar_front_image: uploadedUrls.aadharFront || null,
         aadhar_back_image: uploadedUrls.aadharBack || null,
@@ -471,6 +473,7 @@ export default function EmployeeManagement() {
         ifsc_code: editFormData.ifsc_code,
         branch_name: editFormData.branch_name,
         payment_mode: editFormData.payment_mode,
+        beneficiary_name: editFormData.beneficiary_name || null,
         mode_of_attendance: editFormData.mode_of_attendance,
         aadhar_no: editFormData.aadhar_no,
         family_mobile_no: editFormData.family_mobile_no || null,
@@ -534,6 +537,7 @@ export default function EmployeeManagement() {
       ifsc_code: employee.ifsc_code,
       branch_name: employee.branch_name,
       payment_mode: employee.payment_mode,
+      beneficiary_name: employee.beneficiary_name || '',
       mode_of_attendance: employee.mode_of_attendance,
       aadhar_no: employee.aadhar_no || '',
       family_mobile_no: employee.family_mobile_no || '',
@@ -582,6 +586,7 @@ export default function EmployeeManagement() {
       ifsc_code: '',
       branch_name: '',
       payment_mode: 'Bank Transfer',
+      beneficiary_name: '',
       status: 'Active',
       aadharFront: null,
       aadharBack: null,
@@ -932,8 +937,8 @@ export default function EmployeeManagement() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Father's Name</label>
-                    <input type="text" name="father_name" value={formData.father_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Father's Name <span className="text-red-500">*</span></label>
+                    <input type="text" name="father_name" value={formData.father_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
                   </div>
 
                   <div>
@@ -983,20 +988,31 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Designation <span className="text-red-500">*</span></label>
-                    <input type="text" name="designation" value={formData.designation} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <select
+                      name="designation"
+                      value={formData.designation}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                      required
+                    >
+                      <option value="">Select Designation</option>
+                      <option value="Employee">Employee</option>
+                      <option value="Manager">Manager</option>
+                      <option value="HOD">HOD</option>
+                    </select>
                   </div>
 
 
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Joining Company Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Joining Shop Name</label>
                     <select
                       name="joining_company_name"
                       value={formData.joining_company_name}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                     >
-                      <option value="">Select Company</option>
+                      <option value="">Select Shop</option>
                       {joiningCompanies.map((company) => (
                         <option key={company.id} value={company.company_name}>
                           {company.company_name}
@@ -1045,6 +1061,11 @@ export default function EmployeeManagement() {
                       <option value="Cheque">Cheque</option>
                       <option value="Cash">Cash</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Beneficiary Name</label>
+                    <input type="text" name="beneficiary_name" value={formData.beneficiary_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
                   </div>
 
                   <div>
@@ -1151,13 +1172,14 @@ export default function EmployeeManagement() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Father's Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Father's Name <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     name="father_name"
                     value={editFormData.father_name || ''}
                     onChange={handleEditInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                    required
                   />
                 </div>
 
@@ -1254,14 +1276,18 @@ export default function EmployeeManagement() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Designation <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
+                  <select
                     name="designation"
                     value={editFormData.designation || ''}
                     onChange={handleEditInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
                     required
-                  />
+                  >
+                    <option value="">Select Designation</option>
+                    <option value="Employee">Employee</option>
+                    <option value="Manager">Manager</option>
+                    <option value="HOD">HOD</option>
+                  </select>
                 </div>
 
                 <div>
@@ -1375,6 +1401,17 @@ export default function EmployeeManagement() {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Beneficiary Name</label>
+                  <input
+                    type="text"
+                    name="beneficiary_name"
+                    value={editFormData.beneficiary_name || ''}
+                    onChange={handleEditInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                   <select
                     name="status"
@@ -1454,6 +1491,7 @@ export default function EmployeeManagement() {
                 <div><label className="text-xs text-gray-500">IFSC Code</label><p>{selectedEmployee.ifsc_code}</p></div>
                 <div><label className="text-xs text-gray-500">Branch Name</label><p>{selectedEmployee.branch_name}</p></div>
                 <div><label className="text-xs text-gray-500">Payment Mode</label><p>{selectedEmployee.payment_mode}</p></div>
+                <div><label className="text-xs text-gray-500">Beneficiary Name</label><p>{selectedEmployee.beneficiary_name || '-'}</p></div>
               </div>
 
               {/* Document Links */}
