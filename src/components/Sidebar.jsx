@@ -21,9 +21,9 @@ const navItems = [
       { to: '/attendance/monthly', label: 'Monthly Attendance', id: 'nav-attendance-monthly' },
     ]
   },
+  { to: '/roaster', label: 'Roster', icon: Wallet, id: 'roaster' },
   { to: '/payroll', label: 'Payroll', icon: DollarSign, id: 'payroll' },
   { to: '/misreport', label: 'MIS Report', icon: BarChart3, id: 'misReport' },
-  { to: '/roaster', label: 'Roaster', icon: Wallet, id: 'roaster' },
   { to: '/admin-advance', label: 'Admin Advance', icon: Wallet, id: 'admin advance' }
 ]
 

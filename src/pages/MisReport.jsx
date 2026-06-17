@@ -334,7 +334,7 @@ const MisReport = () => {
                 <div className="flex gap-3">
                     <button
                         onClick={handleClearFilters}
-                        className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 border border-gray-200  text-gray-600 hover:bg-gray-50 transition-colors"
                     >
                         <Filter size={16} />
                         Clear Filters
@@ -342,7 +342,7 @@ const MisReport = () => {
                     <button
                         onClick={handleExportCSV}
                         disabled={filteredRows.length === 0}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium text-sm transition-colors ${filteredRows.length === 0
+                        className={`flex items-center gap-2 px-4 py-2  text-white font-medium text-sm transition-colors ${filteredRows.length === 0
                             ? 'bg-gray-400 cursor-not-allowed'
                             : 'bg-green-600 hover:bg-green-700'
                             }`}
@@ -355,53 +355,53 @@ const MisReport = () => {
 
             {/* Summary Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="bg-white  border border-gray-200 p-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-xs font-medium text-gray-500">Total Target</p>
                             <p className="text-2xl font-bold text-gray-900 mt-1">{summary.totalTarget}</p>
                             <p className="text-xs text-gray-400 mt-1">Total tasks assigned</p>
                         </div>
-                        <div className="p-2 bg-blue-50 rounded-lg">
+                        <div className="p-2 bg-blue-50 ">
                             <Target size={20} className="text-blue-600" />
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="bg-white  border border-gray-200 p-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-xs font-medium text-gray-500">Work Done</p>
                             <p className="text-2xl font-bold text-green-600 mt-1">{summary.totalDone}</p>
                             <p className="text-xs text-gray-400 mt-1">Tasks completed</p>
                         </div>
-                        <div className="p-2 bg-green-50 rounded-lg">
+                        <div className="p-2 bg-green-50 ">
                             <CheckCircle2 size={20} className="text-green-600" />
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="bg-white  border border-gray-200 p-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-xs font-medium text-gray-500">Pending Tasks</p>
                             <p className="text-2xl font-bold text-orange-600 mt-1">{summary.totalPending}</p>
                             <p className="text-xs text-gray-400 mt-1">{summary.totalWeekPending} from this week</p>
                         </div>
-                        <div className="p-2 bg-orange-50 rounded-lg">
+                        <div className="p-2 bg-orange-50 ">
                             <AlertCircle size={20} className="text-orange-600" />
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="bg-white  border border-gray-200 p-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-xs font-medium text-gray-500">Avg. Inefficiency</p>
                             <p className="text-2xl font-bold text-indigo-600 mt-1">{avgEfficiency}%</p>
                             <p className="text-xs text-gray-400 mt-1">Work not done</p>
                         </div>
-                        <div className="p-2 bg-indigo-50 rounded-lg">
+                        <div className="p-2 bg-indigo-50 ">
                             <TrendingUp size={20} className="text-indigo-600" />
                         </div>
                     </div>
@@ -409,13 +409,13 @@ const MisReport = () => {
             </div>
 
             {/* Filter Section */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <div className="bg-white  border border-gray-200 p-4 mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                         <label className="block text-xs font-medium text-gray-500 mb-1">Start Date</label>
                         <input
                             type="date"
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                            className="w-full px-3 py-2 border border-gray-200  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
                         />
@@ -425,7 +425,7 @@ const MisReport = () => {
                         <label className="block text-xs font-medium text-gray-500 mb-1">End Date</label>
                         <input
                             type="date"
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                            className="w-full px-3 py-2 border border-gray-200  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                             value={endDate}
                             onChange={(e) => setEndDate(e.target.value)}
                         />
@@ -435,7 +435,7 @@ const MisReport = () => {
                         <label className="block text-xs font-medium text-gray-500 mb-1">Filter Company</label>
                         <div className="relative">
                             <select
-                                className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white"
+                                className="w-full appearance-none px-3 py-2 border border-gray-200  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white"
                                 value={selectedCompany}
                                 onChange={(e) => setSelectedCompany(e.target.value)}
                             >
@@ -455,7 +455,7 @@ const MisReport = () => {
                             <input
                                 type="text"
                                 placeholder="Employee name..."
-                                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                className="w-full pl-9 pr-3 py-2 border border-gray-200  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
@@ -465,7 +465,7 @@ const MisReport = () => {
             </div>
 
             {/* Table */}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="bg-white  border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b border-gray-200">
@@ -497,7 +497,7 @@ const MisReport = () => {
                                         <p className="text-red-600 mb-3">{error}</p>
                                         <button
                                             onClick={fetchMisData}
-                                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+                                            className="px-4 py-2 bg-indigo-600 text-white  hover:bg-indigo-700 transition-colors text-sm"
                                         >
                                             Retry
                                         </button>
@@ -563,7 +563,7 @@ const MisReport = () => {
             {/* Task Details Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsModalOpen(false)}>
-                    <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white  max-w-5xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-lg font-medium">
@@ -585,7 +585,7 @@ const MisReport = () => {
                                 <span className="text-xs text-gray-500">{selectedEmployeeTasks.length} records</span>
                             </div>
 
-                            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                            <div className="bg-white  border border-gray-200 overflow-hidden">
                                 <div className="overflow-x-auto max-h-96">
                                     <table className="w-full text-sm">
                                         <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
@@ -634,7 +634,7 @@ const MisReport = () => {
                         <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 sticky bottom-0">
                             <button
                                 onClick={() => setIsModalOpen(false)}
-                                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                                className="px-4 py-2 bg-gray-600 text-white  hover:bg-gray-700 transition-colors text-sm"
                             >
                                 Close
                             </button>

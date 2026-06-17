@@ -91,11 +91,10 @@ export default function JoiningCompany() {
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Alert banner */}
       {alert && (
-        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg border text-sm animate-fade-in ${
-          alert.type === 'success' 
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3  shadow-lg border text-sm animate-fade-in ${alert.type === 'success'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
             : 'bg-rose-50 border-rose-200 text-rose-800'
-        }`}>
+          }`}>
           {alert.type === 'success' ? <CheckCircle size={18} /> : <ShieldAlert size={18} />}
           <span>{alert.message}</span>
         </div>
@@ -117,7 +116,7 @@ export default function JoiningCompany() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Form Card */}
         <div className="lg:col-span-1">
-          <div className="bg-white rounded-xl shadow-md border border-slate-100 p-5 space-y-4">
+          <div className="bg-white  shadow-md border border-slate-100 p-5 space-y-4">
             <h3 className="text-base font-bold text-slate-800">Add New Company</h3>
             <form onSubmit={handleAddCompany} className="space-y-4">
               <div>
@@ -129,17 +128,17 @@ export default function JoiningCompany() {
                   value={newCompanyName}
                   onChange={(e) => setNewCompanyName(e.target.value)}
                   placeholder="e.g. Balaji Wines"
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-3 py-2 text-sm border border-slate-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                   required
                 />
               </div>
               <button
                 type="submit"
                 disabled={saving || !newCompanyName.trim()}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white  text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
               >
                 {saving ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent  animate-spin"></div>
                 ) : (
                   <Plus size={16} />
                 )}
@@ -151,7 +150,7 @@ export default function JoiningCompany() {
 
         {/* Right Column: List Card */}
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl shadow-md border border-slate-100 overflow-hidden flex flex-col h-[500px]">
+          <div className="bg-white  shadow-md border border-slate-100 overflow-hidden flex flex-col h-[500px]">
             {/* Search Header */}
             <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 bg-slate-50/50">
               <span className="text-sm font-bold text-slate-700">Company List ({filteredCompanies.length})</span>
@@ -162,7 +161,7 @@ export default function JoiningCompany() {
                   placeholder="Search companies..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                  className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
                 />
               </div>
             </div>
@@ -171,7 +170,7 @@ export default function JoiningCompany() {
             <div className="flex-1 overflow-y-auto">
               {loading ? (
                 <div className="h-full flex items-center justify-center">
-                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent  animate-spin"></div>
                 </div>
               ) : filteredCompanies.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">

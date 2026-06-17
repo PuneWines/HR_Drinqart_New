@@ -17,34 +17,73 @@ const JOINING_API_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfX
 // IST Timezone offset (UTC+5:30)
 const IST_OFFSET = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes in milliseconds
 
+// Format to ISO string in its original timezone (no offset)
+const formatToISTISOString = (timeStr) => {
+  if (!timeStr || timeStr === '-') return null;
+  if (timeStr instanceof Date) {
+    const tzoffset = timeStr.getTimezoneOffset() * 60000;
+    const localISOTime = (new Date(timeStr.getTime() - tzoffset)).toISOString().slice(0, -1);
+    return localISOTime;
+  }
+
+  let formatted = timeStr.trim().replace(' ', 'T');
+  if (formatted.includes('+')) {
+    formatted = formatted.split('+')[0];
+  } else if (formatted.endsWith('Z')) {
+    formatted = formatted.slice(0, -1);
+  }
+
+  const timeParts = formatted.split('T')[1] || '';
+  if (timeParts.split(':').length === 2) {
+    formatted = formatted + ':00';
+  }
+  return formatted;
+};
+
+// Parse a date-time string assuming it represents a time in IST
+const parseISTToDate = (dateStr) => {
+  if (!dateStr || dateStr === '-') return null;
+  try {
+    let cleanStr = dateStr;
+    if (cleanStr.includes('+')) {
+      cleanStr = cleanStr.split('+')[0];
+    } else if (cleanStr.endsWith('Z')) {
+      cleanStr = cleanStr.slice(0, -1);
+    }
+
+    let formatted = cleanStr.trim().replace(' ', 'T');
+    const timeParts = formatted.split('T')[1] || '';
+    if (timeParts.split(':').length === 2) {
+      formatted = formatted + ':00';
+    }
+    formatted = formatted + '+05:30';
+    const d = new Date(formatted);
+    if (!isNaN(d.getTime())) return d;
+    return null;
+  } catch (e) {
+    return null;
+  }
+};
+
 // Convert UTC to IST
 const convertUTCToIST = (utcDateStr) => {
   if (!utcDateStr || utcDateStr === '-') return '-';
-  try {
-    // Parse the UTC date string
-    const utcDate = new Date(utcDateStr);
-    if (isNaN(utcDate.getTime())) return utcDateStr;
-
-    // Add IST offset (UTC+5:30)
-    const istDate = new Date(utcDate.getTime() + IST_OFFSET);
-    return istDate;
-  } catch (e) {
-    return utcDateStr;
-  }
+  const d = parseISTToDate(utcDateStr);
+  return d || utcDateStr;
 };
 
 // Format time in IST
 const formatTimeIST = (utcDateStr) => {
   if (!utcDateStr || utcDateStr === '-') return '-';
   try {
-    const istDate = convertUTCToIST(utcDateStr);
-    if (istDate === '-' || typeof istDate === 'string') return utcDateStr;
-
-    const hours = istDate.getHours();
-    const minutes = istDate.getMinutes();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const h12 = hours % 12 || 12;
-    return `${h12}:${String(minutes).padStart(2, '0')} ${ampm}`;
+    const d = parseISTToDate(utcDateStr);
+    if (!d) return utcDateStr;
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }).format(d);
   } catch (e) {
     return utcDateStr;
   }
@@ -54,17 +93,22 @@ const formatTimeIST = (utcDateStr) => {
 const formatDateTimeIST = (utcDateStr) => {
   if (!utcDateStr || utcDateStr === '-') return '-';
   try {
-    const istDate = convertUTCToIST(utcDateStr);
-    if (istDate === '-' || typeof istDate === 'string') return utcDateStr;
+    const d = parseISTToDate(utcDateStr);
+    if (!d) return utcDateStr;
 
-    const yyyy = istDate.getFullYear();
-    const mm = String(istDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(istDate.getDate()).padStart(2, '0');
-    const hours = istDate.getHours();
-    const minutes = istDate.getMinutes();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const h12 = hours % 12 || 12;
-    return `${yyyy}-${mm}-${dd} ${h12}:${String(minutes).padStart(2, '0')} ${ampm}`;
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).formatToParts(d);
+
+    const getVal = (type) => parts.find(p => p.type === type).value;
+    return `${getVal('year')}-${getVal('month')}-${getVal('day')} ${getVal('hour')}:${getVal('minute')}:${getVal('second')}`;
   } catch (e) {
     return utcDateStr;
   }
@@ -74,13 +118,18 @@ const formatDateTimeIST = (utcDateStr) => {
 const formatDateIST = (utcDateStr) => {
   if (!utcDateStr || utcDateStr === '-') return '-';
   try {
-    const istDate = convertUTCToIST(utcDateStr);
-    if (istDate === '-' || typeof istDate === 'string') return utcDateStr;
+    const d = parseISTToDate(utcDateStr);
+    if (!d) return utcDateStr;
 
-    const yyyy = istDate.getFullYear();
-    const mm = String(istDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(istDate.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(d);
+
+    const getVal = (type) => parts.find(p => p.type === type).value;
+    return `${getVal('year')}-${getVal('month')}-${getVal('day')}`;
   } catch (e) {
     return utcDateStr;
   }
@@ -90,12 +139,19 @@ const formatDateIST = (utcDateStr) => {
 const isLatePunch = (utcDateStr) => {
   if (!utcDateStr || utcDateStr === '-') return false;
   try {
-    const istDate = convertUTCToIST(utcDateStr);
-    if (istDate === '-' || typeof istDate === 'string') return false;
+    const d = parseISTToDate(utcDateStr);
+    if (!d) return false;
 
-    const hours = istDate.getHours();
-    const minutes = istDate.getMinutes();
-    const totalMinutes = hours * 60 + minutes;
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    }).formatToParts(d);
+
+    const hour = parseInt(parts.find(p => p.type === 'hour').value, 10);
+    const minute = parseInt(parts.find(p => p.type === 'minute').value, 10);
+    const totalMinutes = hour * 60 + minute;
 
     // 10:10 AM IST = 10*60 + 10 = 610 minutes
     const thresholdMinutes = 10 * 60 + 10;
@@ -210,41 +266,8 @@ const AttendanceDaily = () => {
   const calculateWorkHours = (inStr, outStr, dateContext = '') => {
     if (!inStr || !outStr || inStr === '-' || outStr === '-' || inStr === outStr) return '00:00:00';
     try {
-      const parse = (s) => {
-        if (!s || s === '-') return null;
-        try {
-          // Try to parse as UTC date first
-          if (s.includes('-') && s.includes(':')) {
-            const d = new Date(s.replace(/-/g, '/'));
-            if (!isNaN(d.getTime())) {
-              // Convert UTC to IST for comparison
-              return new Date(d.getTime() + IST_OFFSET);
-            }
-          }
-
-          let cleanTime = s.trim().toUpperCase();
-          const isPM = cleanTime.includes('PM');
-          const isAM = cleanTime.includes('AM');
-          cleanTime = cleanTime.replace(/[AP]M/g, '').trim();
-
-          const parts = cleanTime.split(':');
-          let h = parseInt(parts[0]) || 0;
-          let m = parseInt(parts[1]) || 0;
-          let sec = parseInt(parts[2]) || 0;
-
-          if (isPM && h < 12) h += 12;
-          if (isAM && h === 12) h = 0;
-
-          const baseDate = dateContext ? new Date(dateContext.replace(/-/g, '/')) : new Date();
-          baseDate.setHours(h, m, sec, 0);
-          return baseDate;
-        } catch (e) {
-          return null;
-        }
-      };
-
-      const inDate = parse(inStr);
-      const outDate = parse(outStr);
+      const inDate = parseISTToDate(inStr);
+      const outDate = parseISTToDate(outStr);
       if (!inDate || !outDate || outDate <= inDate) return '00:00:00';
       return calculateHoursMins(outDate - inDate);
     } catch (e) {
@@ -255,43 +278,19 @@ const AttendanceDaily = () => {
   const calculateLateMinutes = (inStr, dateContext = '') => {
     if (!inStr || inStr === '-') return 0;
     try {
-      const parse = (s) => {
-        if (!s || s === '-') return null;
-        try {
-          if (s.includes('-') && s.includes(':')) {
-            const d = new Date(s.replace(/-/g, '/'));
-            if (!isNaN(d.getTime())) {
-              // Convert UTC to IST for comparison
-              return new Date(d.getTime() + IST_OFFSET);
-            }
-          }
-          let cleanTime = s.trim().toUpperCase();
-          const isPM = cleanTime.includes('PM');
-          const isAM = cleanTime.includes('AM');
-          cleanTime = cleanTime.replace(/[AP]M/g, '').trim();
-
-          const parts = cleanTime.split(':');
-          let h = parseInt(parts[0]) || 0;
-          let m = parseInt(parts[1]) || 0;
-          let sec = parseInt(parts[2]) || 0;
-
-          if (isPM && h < 12) h += 12;
-          if (isAM && h === 12) h = 0;
-
-          const baseDate = dateContext ? new Date(dateContext.replace(/-/g, '/')) : new Date();
-          baseDate.setHours(h, m, sec, 0);
-          return baseDate;
-        } catch (e) {
-          return null;
-        }
-      };
-
-      const inDate = parse(inStr);
+      const inDate = parseISTToDate(inStr);
       if (!inDate) return 0;
 
-      const hours = inDate.getHours();
-      const minutes = inDate.getMinutes();
-      const totalMinutes = hours * 60 + minutes;
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Kolkata',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false
+      }).formatToParts(inDate);
+
+      const hour = parseInt(parts.find(p => p.type === 'hour').value, 10);
+      const minute = parseInt(parts.find(p => p.type === 'minute').value, 10);
+      const totalMinutes = hour * 60 + minute;
 
       const officialStartTime = 10 * 60 + 0;
       const graceTimeThreshold = 10 * 60 + 10;
@@ -311,20 +310,6 @@ const AttendanceDaily = () => {
 
     try {
       const rows = aggregatedData.map(item => {
-        // Parse UTC times and store as UTC in DB
-        const parseUTC = (timeStr) => {
-          if (!timeStr || timeStr === '-') return null;
-          try {
-            if (timeStr.includes('-') && timeStr.includes(':')) {
-              const d = new Date(timeStr.replace(/-/g, '/'));
-              if (!isNaN(d.getTime())) return d;
-            }
-            return null;
-          } catch (e) {
-            return null;
-          }
-        };
-
         return {
           employee_id: item.EmployeeID,
           employee_name: item.EmployeeName,
@@ -334,8 +319,8 @@ const AttendanceDaily = () => {
           store_name: item.StoreName,
           device_id: item.DeviceID,
           serial_number: item.AssignedSerial || item.SerialNumber,
-          in_time: parseUTC(item.InTime),
-          out_time: parseUTC(item.OutTime),
+          in_time: formatToISTISOString(item.InTime),
+          out_time: formatToISTISOString(item.OutTime),
           working_hour: item.WorkingHour,
           overtime: item.Overtime,
           late_minute: item.LateMinute,
@@ -577,6 +562,7 @@ const AttendanceDaily = () => {
               const res = await fetch(url);
               if (!res.ok) return [];
               const logs = await res.json();
+              console.log("logsssss", logs)
               return Array.isArray(logs) ? logs.map(l => ({ ...l, _DeviceName: device.name })) : [];
             } catch (e) {
               console.error(`Error fetching for ${device.name}:`, e);
@@ -679,9 +665,11 @@ const AttendanceDaily = () => {
         let actualLunchMs = 0;
         if (logs.length > 2) {
           for (let i = 1; i < logs.length - 1; i += 2) {
-            const lOut = new Date(logs[i].replace(/-/g, '/'));
-            const lIn = new Date(logs[i + 1].replace(/-/g, '/'));
-            actualLunchMs += Math.max(0, lIn - lOut);
+            const lOut = parseISTToDate(logs[i]);
+            const lIn = parseISTToDate(logs[i + 1]);
+            if (lOut && lIn) {
+              actualLunchMs += Math.max(0, lIn - lOut);
+            }
           }
         }
 
@@ -689,11 +677,10 @@ const AttendanceDaily = () => {
         const wasteTimeMs = Math.max(0, actualLunchMs - standardLunchMs);
         const displayLunchMs = Math.min(actualLunchMs, standardLunchMs);
 
-        const dateObj = new Date(group.Date);
+        const dateObj = parseISTToDate(group.Date);
         const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(dateObj);
 
         let status = 'Present';
-        if (punchMiss === 'Yes') status = 'Absent';
         if (lateMins > 0) status = 'Late';
 
         const punchLogStr = logs.map(l => formatTimeIST(l)).join(' | ');
@@ -765,11 +752,11 @@ const AttendanceDaily = () => {
         const displayCode = dMap ? dMap.userId : (empMeta ? empMeta.id : (isNaN(code) ? 'Unknown' : code));
         const displayStore = dMap ? dMap.storeName : (empMeta ? empMeta.store : log._DeviceName);
 
-        const dateObj = new Date(log.LogDate.replace(/-/g, '/'));
+        const dateObj = parseISTToDate(log.LogDate);
 
         return {
           date: log.LogDate.split(' ')[0],
-          day: dateObj.toLocaleDateString('en-US', { weekday: 'long' }),
+          day: dateObj ? dateObj.toLocaleDateString('en-US', { weekday: 'long' }) : '',
           time: formatTimeIST(log.LogDate), // Convert to IST
           employeeId: displayCode,
           employeeName: displayName,
@@ -820,10 +807,10 @@ const AttendanceDaily = () => {
 
       // Store times in UTC
       if (inTime !== undefined) {
-        updateData.in_time = inTime ? new Date(inTime.replace(/-/g, '/')) : null;
+        updateData.in_time = inTime ? formatToISTISOString(inTime) : null;
       }
       if (outTime !== undefined) {
-        updateData.out_time = outTime ? new Date(outTime.replace(/-/g, '/')) : null;
+        updateData.out_time = outTime ? formatToISTISOString(outTime) : null;
       }
 
       if (inTime || outTime) {
@@ -910,16 +897,23 @@ const AttendanceDaily = () => {
     const formatInputVal = (t) => {
       if (!t || t === '-') return '';
       try {
-        // Convert UTC to IST for display in datetime-local input
-        const istDate = convertUTCToIST(t);
-        if (istDate === '-' || typeof istDate === 'string') return '';
+        const d = parseISTToDate(t);
+        if (!d) return '';
 
-        const yyyy = istDate.getFullYear();
-        const mm = String(istDate.getMonth() + 1).padStart(2, '0');
-        const dd = String(istDate.getDate()).padStart(2, '0');
-        const hh = String(istDate.getHours()).padStart(2, '0');
-        const min = String(istDate.getMinutes()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).formatToParts(d);
+
+        const getVal = (type) => parts.find(p => p.type === type).value;
+        let hour = getVal('hour');
+        if (hour === '24') hour = '00';
+        return `${getVal('year')}-${getVal('month')}-${getVal('day')}T${hour}:${getVal('minute')}`;
       } catch (e) {
         return '';
       }
@@ -1130,13 +1124,13 @@ const AttendanceDaily = () => {
       </div>
 
       {/* View Toggle - Compact */}
-      <div className="flex flex-wrap justify-between items-center gap-2 mb-3 bg-white p-2 rounded border border-gray-200 shadow-sm">
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-3 bg-white p-2 rounded border border-gray-200">
         <div className="flex items-center gap-2">
           <div className="flex bg-gray-100 p-0.5 rounded-md">
             <button
               onClick={() => setViewMode('calendar')}
               className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-all ${viewMode === 'calendar'
-                ? 'bg-white text-indigo-600 shadow'
+                ? 'bg-white text-indigo-600 '
                 : 'text-gray-600 hover:text-gray-900'
                 }`}
             >
@@ -1146,7 +1140,7 @@ const AttendanceDaily = () => {
             <button
               onClick={() => setViewMode('daily')}
               className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-all ${viewMode === 'daily'
-                ? 'bg-white text-indigo-600 shadow'
+                ? 'bg-white text-indigo-600 '
                 : 'text-gray-600 hover:text-gray-900'
                 }`}
             >

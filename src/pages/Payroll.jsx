@@ -798,7 +798,7 @@ const Payroll = () => {
         );
 
         return (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="bg-white  border border-gray-200 overflow-hidden">
                 {/* Update Toolbar */}
                 {isSalary && selectedRows.size > 0 && (
                     <div className="flex items-center gap-3 p-4 bg-indigo-50 border-b border-indigo-100">
@@ -809,14 +809,14 @@ const Payroll = () => {
                         <button
                             onClick={handleUpdate}
                             disabled={isUpdating}
-                            className="ml-auto flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                            className="ml-auto flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium  transition-colors disabled:opacity-50"
                         >
                             {isUpdating ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                             {isUpdating ? 'Updating...' : 'Update Records'}
                         </button>
                         <button
                             onClick={() => { setSelectedRows(new Set()); setEditingData({}); }}
-                            className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100  transition-colors"
                         >
                             Cancel
                         </button>
@@ -941,14 +941,14 @@ const Payroll = () => {
                         <input
                             type="text"
                             placeholder="Search records..."
-                            className="pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 w-64"
+                            className="pl-9 pr-3 py-2 border border-gray-200  text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 w-64"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
                     <button
                         onClick={() => setShowModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white  hover:bg-indigo-700 transition-colors"
                     >
                         <Plus size={18} />
                         New Payroll
@@ -957,7 +957,7 @@ const Payroll = () => {
                         <button
                             onClick={handleSubmitPayments}
                             disabled={isSubmittingPayments || !salaryData?.rows?.length}
-                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white  hover:bg-green-700 transition-colors disabled:opacity-50"
                         >
                             {isSubmittingPayments ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                             {isSubmittingPayments ? 'Submitting...' : 'Submit Payments'}
@@ -969,31 +969,31 @@ const Payroll = () => {
             {/* Summary Stats Cards - Only for Salary Tab */}
             {activeTab === 'salary' && !loading && salaryData.rows?.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <div className="bg-white  border border-gray-200 p-4">
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-medium text-gray-500">Total Employees</p>
                                 <p className="text-2xl font-bold text-gray-900 mt-1">{totalEmployees}</p>
                             </div>
-                            <div className="p-2 bg-indigo-50 rounded-lg">
+                            <div className="p-2 bg-indigo-50 ">
                                 <Users size={20} className="text-indigo-600" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <div className="bg-white  border border-gray-200 p-4">
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-medium text-gray-500">Total Salary Amount</p>
                                 <p className="text-2xl font-bold text-green-600 mt-1">₹{totalSalaryAmount.toLocaleString()}</p>
                             </div>
-                            <div className="p-2 bg-green-50 rounded-lg">
+                            <div className="p-2 bg-green-50 ">
                                 <DollarSign size={20} className="text-green-600" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <div className="bg-white  border border-gray-200 p-4">
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-medium text-gray-500">Month</p>
@@ -1001,19 +1001,19 @@ const Payroll = () => {
                                     {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][selectedMonth - 1]}
                                 </p>
                             </div>
-                            <div className="p-2 bg-blue-50 rounded-lg">
+                            <div className="p-2 bg-blue-50 ">
                                 <Calendar size={20} className="text-blue-600" />
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <div className="bg-white  border border-gray-200 p-4">
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-medium text-gray-500">Year</p>
                                 <p className="text-2xl font-bold text-gray-900 mt-1">{selectedYear}</p>
                             </div>
-                            <div className="p-2 bg-purple-50 rounded-lg">
+                            <div className="p-2 bg-purple-50 ">
                                 <TrendingUp size={20} className="text-purple-600" />
                             </div>
                         </div>
@@ -1051,7 +1051,7 @@ const Payroll = () => {
                         <select
                             value={selectedMonth}
                             onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="px-3 py-2 border border-gray-200  text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         >
                             {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((m, idx) => (
                                 <option key={m} value={idx + 1}>{m}</option>
@@ -1063,7 +1063,7 @@ const Payroll = () => {
                         <select
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="px-3 py-2 border border-gray-200  text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         >
                             {[2024, 2025, 2026].map(y => (
                                 <option key={y} value={y}>{y}</option>
@@ -1082,11 +1082,11 @@ const Payroll = () => {
                     </div>
                 </div>
             ) : error ? (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                <div className="bg-red-50 border border-red-200  p-6 text-center">
                     <p className="text-red-600 mb-3">{error}</p>
                     <button
                         onClick={() => activeTab === 'salary' ? fetchPayrollData() : fetchHistoryData()}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                        className="px-4 py-2 bg-red-600 text-white  hover:bg-red-700 transition-colors text-sm"
                     >
                         Retry
                     </button>
@@ -1095,7 +1095,7 @@ const Payroll = () => {
                 <div>
                     {activeTab === 'salary' ? renderTable(salaryData, true) : renderTable(historyData, false)}
                     {((activeTab === 'salary' && salaryData.rows?.length === 0) || (activeTab === 'history' && historyData.rows?.length === 0)) && !loading && (
-                        <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="text-center py-12 bg-gray-50  border border-gray-200">
                             <div className="flex flex-col items-center justify-center text-gray-400">
                                 <Search size={48} className="mb-3" />
                                 <p className="font-medium">No records found</p>
@@ -1109,7 +1109,7 @@ const Payroll = () => {
             {/* Add Payroll Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
-                    <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white  max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
                             <h2 className="text-lg font-semibold">Add New Payroll Entry</h2>
                             <button onClick={() => setShowModal(false)} className="p-1 hover:bg-gray-100 rounded">
@@ -1126,7 +1126,7 @@ const Payroll = () => {
                                             name="employeeName"
                                             value={formData.employeeName}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                             required
                                         >
                                             <option value="">Select Employee</option>
@@ -1143,7 +1143,7 @@ const Payroll = () => {
                                             name="employeeId"
                                             value={formData.employeeId}
                                             readOnly
-                                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500"
+                                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200  text-sm text-gray-500"
                                             placeholder="Auto-filled"
                                         />
                                     </div>
@@ -1155,7 +1155,7 @@ const Payroll = () => {
                                             name="year"
                                             value={formData.year}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                         />
                                     </div>
 
@@ -1165,7 +1165,7 @@ const Payroll = () => {
                                             name="month"
                                             value={formData.month}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                         >
                                             {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(m => (
                                                 <option key={m} value={m}>{m}</option>
@@ -1180,7 +1180,7 @@ const Payroll = () => {
                                             name="designation"
                                             value={formData.designation}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                         />
                                     </div>
 
@@ -1191,7 +1191,7 @@ const Payroll = () => {
                                             name="joiningPlace"
                                             value={formData.joiningPlace}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                         />
                                     </div>
 
@@ -1202,7 +1202,7 @@ const Payroll = () => {
                                             name="dateOfJoining"
                                             value={formData.dateOfJoining}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                             placeholder="YYYY-MM-DD"
                                         />
                                     </div>
@@ -1214,7 +1214,7 @@ const Payroll = () => {
                                             name="monthlySalary"
                                             value={formData.monthlySalary}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                         />
                                     </div>
 
@@ -1225,7 +1225,7 @@ const Payroll = () => {
                                             name="advanceDeduction"
                                             value={formData.advanceDeduction}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                         />
                                     </div>
 
@@ -1236,7 +1236,7 @@ const Payroll = () => {
                                             name="brackage"
                                             value={formData.brackage}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                         />
                                     </div>
 
@@ -1247,7 +1247,7 @@ const Payroll = () => {
                                             name="medical"
                                             value={formData.medical}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                         />
                                     </div>
 
@@ -1258,7 +1258,7 @@ const Payroll = () => {
                                             name="totalSalary"
                                             value={formData.totalSalary}
                                             readOnly
-                                            className="w-full px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm font-semibold text-green-700"
+                                            className="w-full px-3 py-2 bg-green-50 border border-green-200  text-sm font-semibold text-green-700"
                                         />
                                     </div>
                                 </div>
@@ -1268,14 +1268,14 @@ const Payroll = () => {
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(false)}
-                                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                    className="px-4 py-2 text-gray-700 border border-gray-300  hover:bg-gray-50 transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                                    className="px-4 py-2 bg-indigo-600 text-white  hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
                                 >
                                     {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : null}
                                     {isSubmitting ? 'Submitting...' : 'Submit Entry'}

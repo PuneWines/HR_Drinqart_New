@@ -380,7 +380,7 @@ const MyAttendance = () => {
 
                 let finalStatus = 'Present';
                 if (punchMiss === 'Yes') {
-                    finalStatus = 'Absent';
+                    finalStatus = 'Present';
                 } else {
                     const parts = workHrs.split(':');
                     const h = parseInt(parts[0]) || 0;

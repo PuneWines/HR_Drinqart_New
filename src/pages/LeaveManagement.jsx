@@ -341,7 +341,7 @@ export default function LeaveManagement() {
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white  hover:bg-indigo-700 transition-colors"
         >
           <Plus size={18} />
           New Leave Request
@@ -355,7 +355,7 @@ export default function LeaveManagement() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="pl-9 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none bg-white"
+            className="pl-9 pr-8 py-2 border border-gray-200  text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none bg-white"
           >
             <option value="all">All Leaves ({leaves.length})</option>
             <option value="Pending">Pending ({pendingCount})</option>
@@ -378,13 +378,13 @@ export default function LeaveManagement() {
             placeholder="Search by name, ID or leave type..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="w-full pl-9 pr-3 py-2 border border-gray-200  text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
         </div>
       </div>
 
       {/* Main Table Section */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+      <div className="bg-white  border border-gray-200 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -427,7 +427,7 @@ export default function LeaveManagement() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-block px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs">
+                    <span className="inline-block px-2 py-1 bg-gray-100 text-gray-700  text-xs">
                       {leave.leave_type}
                     </span>
                   </td>
@@ -443,7 +443,7 @@ export default function LeaveManagement() {
                     <div className="flex gap-1">
                       <button
                         onClick={() => setDetailsLeave(leave)}
-                        className="p-1 text-gray-600 hover:text-indigo-600 rounded-lg transition-colors"
+                        className="p-1 text-gray-600 hover:text-indigo-600  transition-colors"
                         title="View Details"
                       >
                         <Info size={16} />
@@ -452,14 +452,14 @@ export default function LeaveManagement() {
                         <>
                           <button
                             onClick={() => handleStatusChange(leave.id, 'Approved')}
-                            className="p-1 text-green-600 hover:text-green-700 rounded-lg transition-colors"
+                            className="p-1 text-green-600 hover:text-green-700  transition-colors"
                             title="Approve"
                           >
                             <Check size={16} />
                           </button>
                           <button
                             onClick={() => handleStatusChange(leave.id, 'Rejected')}
-                            className="p-1 text-red-600 hover:text-red-700 rounded-lg transition-colors"
+                            className="p-1 text-red-600 hover:text-red-700  transition-colors"
                             title="Reject"
                           >
                             <X size={16} />
@@ -469,7 +469,7 @@ export default function LeaveManagement() {
                       {leave.status !== 'Pending' && (
                         <button
                           onClick={() => handleStatusChange(leave.id, 'Pending')}
-                          className="px-2 py-0.5 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-200"
+                          className="px-2 py-0.5 text-xs text-indigo-600 hover:bg-indigo-50  transition-colors border border-indigo-200"
                           title="Reset to Pending"
                         >
                           Reset
@@ -487,7 +487,7 @@ export default function LeaveManagement() {
       {/* New Request Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
-          <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-white  max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Calendar size={20} className="text-indigo-600" />
@@ -508,7 +508,7 @@ export default function LeaveManagement() {
                     name="employee_select"
                     value={formData.employee_select}
                     onChange={handleEmployeeChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                    className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                     required
                   >
                     <option value="">Select Employee</option>
@@ -526,7 +526,7 @@ export default function LeaveManagement() {
                 </div>
 
                 {formData.employee_id && (
-                  <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 text-xs">
+                  <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50  border border-gray-100 text-xs">
                     <div>
                       <span className="text-gray-400 block font-medium">Employee Name</span>
                       <strong className="text-gray-700 font-semibold">{formData.name}</strong>
@@ -546,7 +546,7 @@ export default function LeaveManagement() {
                     name="leave_type"
                     value={formData.leave_type}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                    className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                     required
                   >
                     <option value="Casual Leave">Casual Leave</option>
@@ -568,7 +568,7 @@ export default function LeaveManagement() {
                       name="from_date"
                       value={formData.from_date}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                       required
                     />
                   </div>
@@ -581,7 +581,7 @@ export default function LeaveManagement() {
                       name="to_date"
                       value={formData.to_date}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                       required
                     />
                   </div>
@@ -595,7 +595,7 @@ export default function LeaveManagement() {
                     type="number"
                     name="days"
                     value={formData.days}
-                    className="w-full px-3 py-2 border border-gray-200 bg-gray-50 text-gray-600 rounded-lg text-sm cursor-not-allowed"
+                    className="w-full px-3 py-2 border border-gray-200 bg-gray-50 text-gray-600  text-sm cursor-not-allowed"
                     readOnly
                   />
                 </div>
@@ -609,7 +609,7 @@ export default function LeaveManagement() {
                     value={formData.reason}
                     onChange={handleInputChange}
                     rows="3"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm resize-none"
+                    className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm resize-none"
                     placeholder="Provide reason for leave request..."
                   />
                 </div>
@@ -619,14 +619,14 @@ export default function LeaveManagement() {
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-4 py-2 text-gray-700 border border-gray-300  hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  className="px-4 py-2 bg-indigo-600 text-white  hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 >
                   {saving ? 'Submitting...' : 'Submit Request'}
                 </button>
@@ -639,7 +639,7 @@ export default function LeaveManagement() {
       {/* Details View Modal */}
       {detailsLeave && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDetailsLeave(null)}>
-          <div className="bg-white rounded-lg max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-white  max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <FileText size={20} className="text-indigo-600" />
@@ -666,7 +666,7 @@ export default function LeaveManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs text-gray-500">Leave Type</label>
-                  <p><span className="inline-block px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs mt-1">{detailsLeave.leave_type}</span></p>
+                  <p><span className="inline-block px-2 py-1 bg-gray-100 text-gray-700  text-xs mt-1">{detailsLeave.leave_type}</span></p>
                 </div>
                 <div>
                   <label className="text-xs text-gray-500">Total Duration</label>
@@ -691,7 +691,7 @@ export default function LeaveManagement() {
 
               <div>
                 <label className="text-xs text-gray-500">Reason</label>
-                <div className="mt-1 p-3 bg-gray-50 border border-gray-100 rounded-lg text-gray-700 text-sm">
+                <div className="mt-1 p-3 bg-gray-50 border border-gray-100  text-gray-700 text-sm">
                   {detailsLeave.reason || <em className="text-gray-400">No reason provided</em>}
                 </div>
               </div>
@@ -712,7 +712,7 @@ export default function LeaveManagement() {
                         handleStatusChange(detailsLeave.id, 'Approved')
                         setDetailsLeave(null)
                       }}
-                      className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors"
+                      className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold  hover:bg-green-700 transition-colors"
                     >
                       Approve
                     </button>
@@ -721,7 +721,7 @@ export default function LeaveManagement() {
                         handleStatusChange(detailsLeave.id, 'Rejected')
                         setDetailsLeave(null)
                       }}
-                      className="px-3 py-1.5 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                      className="px-3 py-1.5 bg-red-600 text-white text-xs font-semibold  hover:bg-red-700 transition-colors"
                     >
                       Reject
                     </button>

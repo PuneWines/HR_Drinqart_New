@@ -288,49 +288,49 @@ const AdminAdvance = () => {
 
       {/* Summary Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="bg-white  border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-500">Pending Requests</p>
               <p className="text-2xl font-bold text-orange-600 mt-1">{totalPending}</p>
             </div>
-            <div className="p-2 bg-orange-50 rounded-lg">
+            <div className="p-2 bg-orange-50 ">
               <Clock size={20} className="text-orange-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="bg-white  border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-500">Approved Requests</p>
               <p className="text-2xl font-bold text-green-600 mt-1">{totalApproved}</p>
             </div>
-            <div className="p-2 bg-green-50 rounded-lg">
+            <div className="p-2 bg-green-50 ">
               <Check size={20} className="text-green-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="bg-white  border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-500">Rejected Requests</p>
               <p className="text-2xl font-bold text-red-600 mt-1">{totalRejected}</p>
             </div>
-            <div className="p-2 bg-red-50 rounded-lg">
+            <div className="p-2 bg-red-50 ">
               <X size={20} className="text-red-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="bg-white  border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-500">Total Amount</p>
               <p className="text-2xl font-bold text-indigo-600 mt-1">₹{totalAmount.toLocaleString()}</p>
             </div>
-            <div className="p-2 bg-indigo-50 rounded-lg">
+            <div className="p-2 bg-indigo-50 ">
               <TrendingUp size={20} className="text-indigo-600" />
             </div>
           </div>
@@ -374,14 +374,14 @@ const AdminAdvance = () => {
         <input
           type="text"
           placeholder="Search by name, ID or type..."
-          className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className="w-full pl-9 pr-3 py-2 border border-gray-200  text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-white  border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -451,7 +451,7 @@ const AdminAdvance = () => {
                     <td className="px-4 py-3 text-center">
                       <button
                         onClick={() => openReviewModal(record)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeTab === 'pending'
+                        className={`px-3 py-1.5  text-xs font-medium transition-colors ${activeTab === 'pending'
                             ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                           }`}
@@ -470,7 +470,7 @@ const AdminAdvance = () => {
       {/* Modal */}
       {showModal && selectedRequest && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-white  max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Wallet size={20} className="text-indigo-600" />
@@ -482,7 +482,7 @@ const AdminAdvance = () => {
             </div>
 
             <div className="p-6 space-y-4">
-              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+              <div className="bg-gray-50  p-4 space-y-3">
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-500">Employee</span>
                   <span className="text-sm font-medium text-gray-900">{selectedRequest.empName} ({selectedRequest.empId})</span>
@@ -504,7 +504,7 @@ const AdminAdvance = () => {
                 </div>
                 <div>
                   <span className="text-sm text-gray-500 block mb-1">Reason</span>
-                  <p className="text-sm text-gray-700 bg-white p-3 rounded-lg border border-gray-200">
+                  <p className="text-sm text-gray-700 bg-white p-3  border border-gray-200">
                     {selectedRequest.reason || '-'}
                   </p>
                 </div>
@@ -516,7 +516,7 @@ const AdminAdvance = () => {
                     <label className="block text-xs font-medium text-gray-500 mb-1">Approved Amount</label>
                     <input
                       type="number"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                       value={approvedAmount}
                       onChange={(e) => setApprovedAmount(e.target.value)}
                       disabled={activeTab !== 'pending' || submitting}
@@ -527,7 +527,7 @@ const AdminAdvance = () => {
                     <label className="block text-xs font-medium text-gray-500 mb-1">Monthly Deduction</label>
                     <input
                       type="number"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                       value={approvedMonthlyDeduction}
                       onChange={(e) => setApprovedMonthlyDeduction(e.target.value)}
                       disabled={activeTab !== 'pending' || submitting}
@@ -542,7 +542,7 @@ const AdminAdvance = () => {
                 <textarea
                   rows={3}
                   placeholder="Add remarks (optional)..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm resize-none"
+                  className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm resize-none"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   disabled={activeTab !== 'pending' || submitting}
@@ -555,14 +555,14 @@ const AdminAdvance = () => {
                 <button
                   onClick={() => handleAction('Rejected')}
                   disabled={submitting}
-                  className="px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 text-red-600 border border-red-300  hover:bg-red-50 transition-colors disabled:opacity-50"
                 >
                   Reject
                 </button>
                 <button
                   onClick={() => handleAction('Approved')}
                   disabled={submitting}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2 bg-indigo-600 text-white  hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
                   {submitting ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                   Approve
