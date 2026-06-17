@@ -220,12 +220,36 @@ export default function EmployeeManagement() {
   })
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target
+    let { name, value } = e.target
+    if (['name_as_per_aadhar', 'father_name', 'joining_place', 'branch_name', 'beneficiary_name', 'ifsc_code'].includes(name)) {
+      value = value.toUpperCase()
+    }
+    if (name === 'aadhar_no') {
+      value = value.replace(/\D/g, '').slice(0, 16)
+    }
+    if (name === 'current_account_no') {
+      value = value.replace(/\D/g, '')
+    }
+    if (['mobile_no', 'family_mobile_no'].includes(name)) {
+      value = value.replace(/\D/g, '').slice(0, 10)
+    }
     setFormData(prev => ({ ...prev, [name]: value }))
   }
 
   const handleEditInputChange = (e) => {
-    const { name, value } = e.target
+    let { name, value } = e.target
+    if (['name_as_per_aadhar', 'father_name', 'joining_place', 'branch_name', 'beneficiary_name', 'ifsc_code'].includes(name)) {
+      value = value.toUpperCase()
+    }
+    if (name === 'aadhar_no') {
+      value = value.replace(/\D/g, '').slice(0, 16)
+    }
+    if (name === 'current_account_no') {
+      value = value.replace(/\D/g, '')
+    }
+    if (['mobile_no', 'family_mobile_no'].includes(name)) {
+      value = value.replace(/\D/g, '').slice(0, 10)
+    }
     setEditFormData(prev => ({ ...prev, [name]: value }))
   }
 
@@ -739,7 +763,7 @@ export default function EmployeeManagement() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">Father Name</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Work Location</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Designation</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Salary</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Shop name</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Actions</th>
             </tr>
           </thead>
@@ -790,7 +814,7 @@ export default function EmployeeManagement() {
                     {emp.designation}
                   </td>
                   <td className="px-4 py-3 text-gray-600">
-                    {emp.salary ? `₹${emp.salary.toLocaleString()}` : '-'}
+                    {emp.joining_company_name}
                   </td>
 
                   <td className="px-4 py-3">
@@ -874,7 +898,7 @@ export default function EmployeeManagement() {
                       name="employee_id"
                       value={formData.employee_id}
                       onChange={handleInputChange}
-                      placeholder="e.g., EMP001"
+                      placeholder="e.g., 1001"
                       className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                       required
                     />
@@ -882,12 +906,12 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Full Name <span className="text-red-500">*</span></label>
-                    <input type="text" name="name_as_per_aadhar" value={formData.name_as_per_aadhar} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="name_as_per_aadhar" value={formData.name_as_per_aadhar} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 uppercase" required />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Father's Name <span className="text-red-500">*</span></label>
-                    <input type="text" name="father_name" value={formData.father_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="father_name" value={formData.father_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 uppercase" required />
                   </div>
 
                   <div>
@@ -907,7 +931,18 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Mobile No <span className="text-red-500">*</span></label>
-                    <input type="tel" name="mobile_no" value={formData.mobile_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input
+                      type="tel"
+                      name="mobile_no"
+                      value={formData.mobile_no}
+                      onChange={handleInputChange}
+                      maxLength={10}
+                      pattern="[0-9]{10}"
+                      inputMode="numeric"
+                      placeholder="Enter 10 digit mobile number"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                      required
+                    />
                   </div>
 
                   <div>
@@ -917,7 +952,17 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Family Mobile No</label>
-                    <input type="tel" name="family_mobile_no" value={formData.family_mobile_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
+                    <input
+                      type="tel"
+                      name="family_mobile_no"
+                      value={formData.family_mobile_no}
+                      onChange={handleInputChange}
+                      maxLength={10}
+                      pattern="[0-9]{10}"
+                      inputMode="numeric"
+                      placeholder="Enter 10 digit mobile number"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
                   </div>
 
                   {/* Employment Information Section */}
@@ -932,7 +977,7 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Joining Place <span className="text-red-500">*</span></label>
-                    <input type="text" name="joining_place" value={formData.joining_place} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="joining_place" value={formData.joining_place} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 uppercase" required />
                   </div>
 
                   <div>
@@ -978,7 +1023,18 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar No <span className="text-red-500">*</span></label>
-                    <input type="text" name="aadhar_no" value={formData.aadhar_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input
+                      type="text"
+                      name="aadhar_no"
+                      value={formData.aadhar_no}
+                      onChange={handleInputChange}
+                      maxLength={16}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Enter Aadhar Number"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                      required
+                    />
                   </div>
 
                   {/* Banking Information Section */}
@@ -988,17 +1044,27 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Account No <span className="text-red-500">*</span></label>
-                    <input type="text" name="current_account_no" value={formData.current_account_no} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input
+                      type="text"
+                      name="current_account_no"
+                      value={formData.current_account_no}
+                      onChange={handleInputChange}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Enter Account Number"
+                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                      required
+                    />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code <span className="text-red-500">*</span></label>
-                    <input type="text" name="ifsc_code" value={formData.ifsc_code} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="ifsc_code" value={formData.ifsc_code} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 uppercase" required />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name <span className="text-red-500">*</span></label>
-                    <input type="text" name="branch_name" value={formData.branch_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" required />
+                    <input type="text" name="branch_name" value={formData.branch_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 uppercase" required />
                   </div>
 
                   <div>
@@ -1012,7 +1078,7 @@ export default function EmployeeManagement() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Beneficiary Name</label>
-                    <input type="text" name="beneficiary_name" value={formData.beneficiary_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
+                    <input type="text" name="beneficiary_name" value={formData.beneficiary_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 uppercase" />
                   </div>
 
                   {/* Documents Section */}
@@ -1150,7 +1216,7 @@ export default function EmployeeManagement() {
                           name="name_as_per_aadhar"
                           value={editFormData.name_as_per_aadhar || ''}
                           onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800 uppercase"
                           required
                         />
                       </div>
@@ -1162,7 +1228,7 @@ export default function EmployeeManagement() {
                           name="father_name"
                           value={editFormData.father_name || ''}
                           onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800 uppercase"
                           required
                         />
                       </div>
@@ -1202,6 +1268,10 @@ export default function EmployeeManagement() {
                           name="mobile_no"
                           value={editFormData.mobile_no || ''}
                           onChange={handleEditInputChange}
+                          maxLength={10}
+                          pattern="[0-9]{10}"
+                          inputMode="numeric"
+                          placeholder="Enter 10 digit mobile number"
                           className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
                           required
                         />
@@ -1225,6 +1295,10 @@ export default function EmployeeManagement() {
                           name="family_mobile_no"
                           value={editFormData.family_mobile_no || ''}
                           onChange={handleEditInputChange}
+                          maxLength={10}
+                          pattern="[0-9]{10}"
+                          inputMode="numeric"
+                          placeholder="Enter 10 digit mobile number"
                           className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
                         />
                       </div>
@@ -1256,7 +1330,7 @@ export default function EmployeeManagement() {
                           name="joining_place"
                           value={editFormData.joining_place || ''}
                           onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800 uppercase"
                           required
                         />
                       </div>
@@ -1325,6 +1399,10 @@ export default function EmployeeManagement() {
                           name="aadhar_no"
                           value={editFormData.aadhar_no || ''}
                           onChange={handleEditInputChange}
+                          maxLength={16}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder="Enter Aadhar Number"
                           className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
                           required
                         />
@@ -1345,6 +1423,9 @@ export default function EmployeeManagement() {
                           name="current_account_no"
                           value={editFormData.current_account_no || ''}
                           onChange={handleEditInputChange}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder="Enter Account Number"
                           className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
                           required
                         />
@@ -1357,7 +1438,7 @@ export default function EmployeeManagement() {
                           name="ifsc_code"
                           value={editFormData.ifsc_code || ''}
                           onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800 uppercase"
                           required
                         />
                       </div>
@@ -1369,7 +1450,7 @@ export default function EmployeeManagement() {
                           name="branch_name"
                           value={editFormData.branch_name || ''}
                           onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800 uppercase"
                           required
                         />
                       </div>
@@ -1396,7 +1477,7 @@ export default function EmployeeManagement() {
                           name="beneficiary_name"
                           value={editFormData.beneficiary_name || ''}
                           onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800 uppercase"
                         />
                       </div>
 

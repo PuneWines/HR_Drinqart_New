@@ -338,20 +338,52 @@ export default function PublicRegister() {
                   name="employee_id"
                   value={formData.employee_id}
                   onChange={handleInputChange}
-                  placeholder="e.g., EMP001"
+                  placeholder="e.g., 1001"
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Full Name <span className="text-red-500">*</span></label>
-                <input type="text" name="name_as_per_aadhar" value={formData.name_as_per_aadhar} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Full Name <span className="text-red-500">*</span>
+                </label>
+
+                <input
+                  type="text"
+                  name="name_as_per_aadhar"
+                  value={formData.name_as_per_aadhar}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      name_as_per_aadhar: e.target.value.toUpperCase(),
+                    })
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500"
+                  required
+                />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Father's Name <span className="text-red-500">*</span></label>
-                <input type="text" name="father_name" value={formData.father_name} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Father's Name <span className="text-red-500">*</span>
+                </label>
+
+                <input
+                  type="text"
+                  name="father_name"
+                  value={formData.father_name}
+                  onChange={(e) =>
+                    handleInputChange({
+                      target: {
+                        name: e.target.name,
+                        value: e.target.value.toUpperCase(),
+                      },
+                    })
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 uppercase"
+                  required
+                />
               </div>
 
               <div>
@@ -370,8 +402,31 @@ export default function PublicRegister() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mobile No <span className="text-red-500">*</span></label>
-                <input type="tel" name="mobile_no" value={formData.mobile_no} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Mobile No <span className="text-red-500">*</span>
+                </label>
+
+                <input
+                  type="tel"
+                  name="mobile_no"
+                  value={formData.mobile_no}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+
+                    handleInputChange({
+                      target: {
+                        name: 'mobile_no',
+                        value,
+                      },
+                    });
+                  }}
+                  maxLength={10}
+                  pattern="[0-9]{10}"
+                  inputMode="numeric"
+                  placeholder="Enter 10 digit mobile number"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500"
+                  required
+                />
               </div>
 
               <div>
@@ -380,8 +435,28 @@ export default function PublicRegister() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Family Mobile No</label>
-                <input type="tel" name="family_mobile_no" value={formData.family_mobile_no} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Family Mobile No
+                </label>
+
+                <input
+                  type="tel"
+                  name="family_mobile_no"
+                  value={formData.family_mobile_no}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+
+                    setFormData((prev) => ({
+                      ...prev,
+                      family_mobile_no: value,
+                    }));
+                  }}
+                  maxLength={10}
+                  pattern="[0-9]{10}"
+                  inputMode="numeric"
+                  placeholder="Enter 10 digit mobile no"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500"
+                />
               </div>
             </div>
           </div>
@@ -399,8 +474,23 @@ export default function PublicRegister() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Joining Place <span className="text-red-500">*</span></label>
-                <input type="text" name="joining_place" value={formData.joining_place} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Joining Place <span className="text-red-500">*</span>
+                </label>
+
+                <input
+                  type="text"
+                  name="joining_place"
+                  value={formData.joining_place}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      joining_place: e.target.value.toUpperCase(),
+                    }))
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 uppercase"
+                  required
+                />
               </div>
 
               <div>
@@ -445,8 +535,33 @@ export default function PublicRegister() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Aadhar No <span className="text-red-500">*</span></label>
-                <input type="text" name="aadhar_no" value={formData.aadhar_no} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Aadhar No <span className="text-red-500">*</span>
+                </label>
+
+                <input
+                  type="text"
+                  name="aadhar_no"
+                  value={formData.aadhar_no}
+                  onChange={(e) => {
+                    const numericValue = e.target.value
+                      .replace(/\D/g, "") // numbers only
+                      .slice(0, 16); // max 16 digits
+
+                    handleInputChange({
+                      target: {
+                        name: "aadhar_no",
+                        value: numericValue,
+                      },
+                    });
+                  }}
+                  maxLength={16}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Enter Aadhar Number"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500"
+                  required
+                />
               </div>
             </div>
           </div>
@@ -460,18 +575,74 @@ export default function PublicRegister() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Account No <span className="text-red-500">*</span></label>
-                <input type="text" name="current_account_no" value={formData.current_account_no} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Account No <span className="text-red-500">*</span>
+                </label>
+
+                <input
+                  type="text"
+                  name="current_account_no"
+                  value={formData.current_account_no}
+                  onChange={(e) => {
+                    const numericValue = e.target.value.replace(/\D/g, "");
+
+                    handleInputChange({
+                      target: {
+                        name: "current_account_no",
+                        value: numericValue,
+                      },
+                    });
+                  }}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Enter Account Number"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500"
+                  required
+                />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">IFSC Code <span className="text-red-500">*</span></label>
-                <input type="text" name="ifsc_code" value={formData.ifsc_code} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  IFSC Code <span className="text-red-500">*</span>
+                </label>
+
+                <input
+                  type="text"
+                  name="ifsc_code"
+                  value={formData.ifsc_code}
+                  onChange={(e) =>
+                    handleInputChange({
+                      target: {
+                        name: "ifsc_code",
+                        value: e.target.value.toUpperCase(),
+                      },
+                    })
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 uppercase"
+                  required
+                />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Branch Name <span className="text-red-500">*</span></label>
-                <input type="text" name="branch_name" value={formData.branch_name} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" required />
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Branch Name <span className="text-red-500">*</span>
+                </label>
+
+                <input
+                  type="text"
+                  name="branch_name"
+                  value={formData.branch_name}
+                  onChange={(e) =>
+                    handleInputChange({
+                      target: {
+                        name: "branch_name",
+                        value: e.target.value.toUpperCase(),
+                      },
+                    })
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 uppercase"
+                  required
+                />
               </div>
 
               <div>
@@ -484,10 +655,25 @@ export default function PublicRegister() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Beneficiary Name</label>
-                <input type="text" name="beneficiary_name" value={formData.beneficiary_name} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" />
-              </div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Beneficiary Name
+                </label>
 
+                <input
+                  type="text"
+                  name="beneficiary_name"
+                  value={formData.beneficiary_name}
+                  onChange={(e) =>
+                    handleInputChange({
+                      target: {
+                        name: "beneficiary_name",
+                        value: e.target.value.toUpperCase(),
+                      },
+                    })
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 uppercase"
+                />
+              </div>
 
             </div>
           </div>
