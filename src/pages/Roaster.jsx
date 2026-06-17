@@ -79,16 +79,7 @@ const isSameDay = (date1, date2) => {
         date1.getDate() === date2.getDate();
 };
 
-// Shift type configurations
-const SHIFT_CONFIG = {
-    'General Shift': { color: 'bg-green-100 text-green-700', label: 'GS', bgColor: 'bg-green-200' },
-    'Day Off': { color: 'bg-gray-100 text-gray-700', label: 'DO', bgColor: 'bg-gray-200' },
-    'Holiday': { color: 'bg-red-100 text-red-700', label: 'Hol', bgColor: 'bg-red-200' },
-    'Morning Shift': { color: 'bg-blue-100 text-blue-700', label: 'MS', bgColor: 'bg-blue-200' },
-    'Evening Shift': { color: 'bg-purple-100 text-purple-700', label: 'ES', bgColor: 'bg-purple-200' },
-    'Night Shift': { color: 'bg-indigo-100 text-indigo-700', label: 'NS', bgColor: 'bg-indigo-200' },
-    'Not Assigned': { color: 'bg-red-200 text-black ', label: '+', bgColor: 'bg-gray-50' }
-};
+
 
 const Roster = () => {
     const [employees, setEmployees] = useState([]);
@@ -107,8 +98,8 @@ const Roster = () => {
         employee_id: '',
         date: '',
         shift_type: 'General Shift',
-        start_time: '10:00',
-        end_time: '18:30',
+        start_time: '09:30',
+        end_time: '19:30',
         remark: ''
     });
     const [bulkAssignForm, setBulkAssignForm] = useState({
@@ -116,8 +107,8 @@ const Roster = () => {
         start_date: '',
         end_date: '',
         shift_type: 'General Shift',
-        start_time: '10:00',
-        end_time: '18:30',
+        start_time: '09:30',
+        end_time: '19:30',
         remark: '',
         days_of_week: {
             monday: true,
@@ -130,9 +121,184 @@ const Roster = () => {
         }
     });
 
-    // Fetch employees
+    const [customShifts, setCustomShifts] = useState([]);
+    const [showManageShiftsModal, setShowManageShiftsModal] = useState(false);
+
+    const [editingShiftId, setEditingShiftId] = useState(null);
+    const [shiftForm, setShiftForm] = useState({
+        shift_name: '',
+        start_time: '',
+        end_time: '',
+        label: '',
+        color_preset: 'Slate/Gray'
+    });
+
+    const COLOR_PRESETS = [
+        { name: 'Green', color: 'bg-green-100 text-green-700', bg_color: 'bg-green-200' },
+        { name: 'Blue', color: 'bg-blue-100 text-blue-700', bg_color: 'bg-blue-200' },
+        { name: 'Purple', color: 'bg-purple-100 text-purple-700', bg_color: 'bg-purple-200' },
+        { name: 'Indigo', color: 'bg-indigo-100 text-indigo-700', bg_color: 'bg-indigo-200' },
+        { name: 'Red', color: 'bg-red-100 text-red-700', bg_color: 'bg-red-200' },
+        { name: 'Orange', color: 'bg-orange-100 text-orange-700', bg_color: 'bg-orange-200' },
+        { name: 'Amber', color: 'bg-amber-100 text-amber-700', bg_color: 'bg-amber-200' },
+        { name: 'Teal', color: 'bg-teal-100 text-teal-700', bg_color: 'bg-teal-200' },
+        { name: 'Rose', color: 'bg-rose-100 text-rose-700', bg_color: 'bg-rose-200' },
+        { name: 'Slate/Gray', color: 'bg-gray-100 text-gray-700', bg_color: 'bg-gray-200' }
+    ];
+
+    const handleSaveShift = async (e) => {
+        e.preventDefault();
+        try {
+            if (!shiftForm.shift_name || !shiftForm.label) {
+                toast.error('Shift Name and Shorthand Label are required');
+                return;
+            }
+
+            const preset = COLOR_PRESETS.find(p => p.name === shiftForm.color_preset) || COLOR_PRESETS[0];
+
+            const payload = {
+                shift_name: shiftForm.shift_name,
+                label: shiftForm.label,
+                start_time: shiftForm.start_time || null,
+                end_time: shiftForm.end_time || null,
+                color: preset.color,
+                bg_color: preset.bg_color
+            };
+
+            if (editingShiftId) {
+                // Update
+                const { error } = await supabase
+                    .from('custom_shift')
+                    .update(payload)
+                    .eq('id', editingShiftId);
+
+                if (error) throw error;
+                toast.success('Shift updated successfully');
+            } else {
+                // Create
+                const { error } = await supabase
+                    .from('custom_shift')
+                    .insert(payload);
+
+                if (error) throw error;
+                toast.success('Shift created successfully');
+            }
+
+            resetShiftForm();
+            await fetchCustomShifts();
+        } catch (error) {
+            console.error('Error saving custom shift:', error);
+            toast.error(error.message || 'Failed to save shift');
+        }
+    };
+
+    const handleDeleteCustomShift = async (id, shiftName) => {
+        if (shiftName === 'General Shift' || shiftName === 'Day Off' || shiftName === 'Holiday') {
+            toast.error('Standard system shifts cannot be deleted');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete the shift "${shiftName}"?`)) return;
+
+        try {
+            const { error } = await supabase
+                .from('custom_shift')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+
+            toast.success('Shift deleted successfully');
+            await fetchCustomShifts();
+
+            if (editingShiftId === id) {
+                resetShiftForm();
+            }
+        } catch (error) {
+            console.error('Error deleting custom shift:', error);
+            toast.error('Failed to delete shift');
+        }
+    };
+
+    const handleEditClick = (shift) => {
+        const preset = COLOR_PRESETS.find(p => p.color === shift.color) || COLOR_PRESETS[0];
+        setEditingShiftId(shift.id);
+        setShiftForm({
+            shift_name: shift.shift_name,
+            start_time: shift.start_time ? shift.start_time.slice(0, 5) : '',
+            end_time: shift.end_time ? shift.end_time.slice(0, 5) : '',
+            label: shift.label,
+            color_preset: preset.name
+        });
+    };
+
+    const resetShiftForm = () => {
+        setEditingShiftId(null);
+        setShiftForm({
+            shift_name: '',
+            start_time: '',
+            end_time: '',
+            label: '',
+            color_preset: 'Slate/Gray'
+        });
+    };
+
+    const fetchCustomShifts = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('custom_shift')
+                .select('*')
+                .order('id');
+            if (error) throw error;
+            setCustomShifts(data || []);
+        } catch (error) {
+            console.error('Error fetching custom shifts:', error);
+            toast.error('Failed to fetch custom shifts');
+        }
+    };
+
+    const getShiftConfig = (shiftType) => {
+        const found = customShifts.find(s => s.shift_name === shiftType);
+        if (found) {
+            return {
+                color: found.color,
+                label: found.label,
+                bgColor: found.bg_color,
+                start_time: found.start_time,
+                end_time: found.end_time
+            };
+        }
+
+        // Static fallbacks
+        if (shiftType === 'Not Assigned') {
+            return { color: 'bg-red-200 text-black', label: '+', bgColor: 'bg-gray-50' };
+        }
+        if (shiftType === 'Day Off') {
+            return { color: 'bg-gray-100 text-gray-700', label: 'DO', bgColor: 'bg-gray-200' };
+        }
+        if (shiftType === 'Holiday') {
+            return { color: 'bg-red-100 text-red-700 ', label: 'Hol', bgColor: 'bg-red-200' };
+        }
+        if (shiftType === 'General Shift') {
+            return { color: 'bg-green-100 text-green-700', label: 'GS', bgColor: 'bg-green-200' };
+        }
+        if (shiftType === 'Morning Shift') {
+            return { color: 'bg-blue-100 text-blue-700', label: 'MS', bgColor: 'bg-blue-200' };
+        }
+        if (shiftType === 'Evening Shift') {
+            return { color: 'bg-purple-100 text-purple-700', label: 'ES', bgColor: 'bg-purple-200' };
+        }
+        if (shiftType === 'Night Shift') {
+            return { color: 'bg-indigo-100 text-indigo-700', label: 'NS', bgColor: 'bg-indigo-200' };
+        }
+
+        return { color: 'bg-indigo-100 text-indigo-700', label: shiftType?.slice(0, 3).toUpperCase() || 'S', bgColor: 'bg-indigo-200' };
+    };
+
+    // Fetch employees and custom shifts
     useEffect(() => {
         fetchEmployees();
+        fetchCustomShifts();
     }, []);
 
     // Fetch roster data when week changes
@@ -210,14 +376,13 @@ const Roster = () => {
             };
         }
 
-        const isSunday = date.getDay() === 0;
         return {
             date,
-            shift_type: isSunday ? 'Holiday' : 'Not Assigned',
+            shift_type: 'Not Assigned',
             start_time: '',
             end_time: '',
-            remark: isSunday ? 'Weekly Off' : '',
-            isHoliday: isSunday
+            remark: '',
+            isHoliday: false
         };
     };
 
@@ -315,8 +480,8 @@ const Roster = () => {
             employee_id: '',
             date: '',
             shift_type: 'General Shift',
-            start_time: '10:00',
-            end_time: '18:30',
+            start_time: '09:30',
+            end_time: '19:30',
             remark: ''
         });
         setSelectedEmployee(null);
@@ -329,8 +494,8 @@ const Roster = () => {
             start_date: '',
             end_date: '',
             shift_type: 'General Shift',
-            start_time: '10:00',
-            end_time: '18:30',
+            start_time: existing?.start_time || '09:30',
+            end_time: existing?.end_time || '19:30',
             remark: '',
             days_of_week: {
                 monday: true,
@@ -376,8 +541,8 @@ const Roster = () => {
             employee_id: employee.employee_id,
             date: dateStr,
             shift_type: existing?.shift_type || 'General Shift',
-            start_time: existing?.start_time || '10:00',
-            end_time: existing?.end_time || '18:30',
+            start_time: existing?.start_time || '09:30',
+            end_time: existing?.end_time || '19:30',
             remark: existing?.remark || ''
         });
         setIsSlidePanelOpen(true);
@@ -465,9 +630,6 @@ const Roster = () => {
                 } else {
                     assigned++;
                 }
-            } else if (date.getDay() === 0) {
-                total++;
-                holiday++;
             }
         });
 
@@ -500,6 +662,13 @@ const Roster = () => {
                 </div>
                 <div className="flex gap-2">
                     <button
+                        onClick={() => setShowManageShiftsModal(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded font-medium text-xs transition-colors"
+                    >
+                        <Database size={12} />
+                        Manage Shifts
+                    </button>
+                    <button
                         onClick={handleOpenBulkAssignModal}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium text-xs transition-colors"
                     >
@@ -529,15 +698,24 @@ const Roster = () => {
             </div>
 
             {/* Status Legend */}
-            <div className="bg-white  border border-gray-200 p-2 mb-3">
-                <div className="flex flex-wrap gap-3">
-                    <span className="text-[11px] font-medium text-gray-700">Shift Types:</span>
-                    {Object.entries(SHIFT_CONFIG).map(([key, config]) => (
-                        <div key={key} className="flex items-center gap-1">
-                            <div className={`w-3 h-3 rounded ${config.bgColor} border`}></div>
-                            <span className="text-[10px] text-gray-600">{key}</span>
+            <div className="bg-white border border-gray-200 p-2 mb-3  rounded-sm">
+                <div className="flex flex-wrap gap-3 items-center">
+                    <span className="text-[11px] font-semibold text-gray-700">Shift Types:</span>
+                    {customShifts.map((shift) => (
+                        <div key={shift.shift_name} className="flex items-center gap-1">
+                            <div className={`w-3 h-3 rounded-full ${shift.bg_color || 'bg-gray-200'} border border-gray-300`}></div>
+                            <span className="text-[10px] text-gray-600 font-medium">
+                                {shift.shift_name}
+                                {shift.start_time ? ` (${shift.start_time.slice(0, 5)} - ${shift.end_time.slice(0, 5)})` : ''}
+                            </span>
                         </div>
                     ))}
+                    {!customShifts.some(s => s.shift_name === 'Not Assigned') && (
+                        <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded-full bg-gray-50 border border-gray-300"></div>
+                            <span className="text-[10px] text-gray-600 font-medium">Not Assigned</span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -608,9 +786,9 @@ const Roster = () => {
             <div className="bg-white  border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)]">
                     <table className="w-full text-xs relative border-collapse">
-                        <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20 shadow-sm">
+                        <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20 ">
                             <tr>
-                                <th className="sticky top-0 left-0 bg-gray-50 px-2 py-1.5 font-medium text-gray-600 text-[10px] z-30 w-[170px] border-r">
+                                <th className="sticky top-0 left-0 bg-gray-50 px-2 py-1.5 font-medium text-gray-600 text-[10px] z-30 w-[170px] border-r border-gray-200">
                                     Employee
                                 </th>
                                 {weekDays.map((day, index) => {
@@ -653,7 +831,7 @@ const Roster = () => {
                             ) : filteredEmployees.length > 0 ? (
                                 filteredEmployees.map((employee) => (
                                     <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="sticky left-0 bg-white hover:bg-gray-50 z-10 px-2 py-1.5 border-r">
+                                        <td className="sticky left-0 bg-white hover:bg-gray-50 z-10 px-2 py-1.5 border-r  border-gray-200">
                                             <div className="flex items-center gap-1.5">
                                                 <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
                                                     {employee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
@@ -668,7 +846,7 @@ const Roster = () => {
                                         {weekDays.map((day, dayIndex) => {
                                             const schedule = getEmployeeRosterForDay(employee.employee_id, day);
                                             const isPast = day < new Date() && !isSameDay(day, new Date());
-                                            const config = SHIFT_CONFIG[schedule.shift_type] || SHIFT_CONFIG['Not Assigned'];
+                                            const config = getShiftConfig(schedule.shift_type);
 
                                             return (
                                                 <td
@@ -682,9 +860,9 @@ const Roster = () => {
                                                             {config.label}
                                                         </span>
                                                     </div>
-                                                    {schedule.shift_type !== 'Not Assigned' && schedule.shift_type !== 'Holiday' && (
+                                                    {schedule.shift_type !== 'Not Assigned' && schedule.shift_type !== 'Holiday' && schedule.start_time && (
                                                         <div className="text-[8px] text-gray-400 mt-0.5">
-                                                            {schedule.start_time} - {schedule.end_time}
+                                                            {schedule.start_time.slice(0, 5)} - {schedule.end_time.slice(0, 5)}
                                                         </div>
                                                     )}
                                                     {schedule.remark && (
@@ -798,15 +976,23 @@ const Roster = () => {
                                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Shift Type</label>
                                 <select
                                     value={assignForm.shift_type}
-                                    onChange={(e) => setAssignForm({ ...assignForm, shift_type: e.target.value })}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const shift = customShifts.find(s => s.shift_name === val);
+                                        setAssignForm({
+                                            ...assignForm,
+                                            shift_type: val,
+                                            start_time: shift && shift.start_time ? shift.start_time.slice(0, 5) : '',
+                                            end_time: shift && shift.end_time ? shift.end_time.slice(0, 5) : ''
+                                        });
+                                    }}
                                     className="w-full px-3 py-2 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900"
                                 >
-                                    <option value="General Shift">General Shift (10:00 - 18:30)</option>
-                                    <option value="Day Off">Day Off</option>
-                                    <option value="Holiday">Holiday</option>
-                                    <option value="Morning Shift">Morning Shift (06:00 - 14:00)</option>
-                                    <option value="Evening Shift">Evening Shift (14:00 - 22:00)</option>
-                                    <option value="Night Shift">Night Shift (22:00 - 06:00)</option>
+                                    {customShifts.map((shift) => (
+                                        <option key={shift.id} value={shift.shift_name}>
+                                            {shift.shift_name} {shift.start_time ? `(${shift.start_time.slice(0, 5)} - ${shift.end_time.slice(0, 5)})` : ''}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -818,7 +1004,10 @@ const Roster = () => {
                                         value={assignForm.start_time}
                                         onChange={(e) => setAssignForm({ ...assignForm, start_time: e.target.value })}
                                         className="w-full px-2 py-1.5 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
-                                        disabled={assignForm.shift_type === 'Day Off' || assignForm.shift_type === 'Holiday'}
+                                        disabled={(() => {
+                                            const shift = customShifts.find(s => s.shift_name === assignForm.shift_type);
+                                            return shift ? (!shift.start_time) : (assignForm.shift_type === 'Day Off' || assignForm.shift_type === 'Holiday');
+                                        })()}
                                     />
                                 </div>
                                 <div>
@@ -828,7 +1017,10 @@ const Roster = () => {
                                         value={assignForm.end_time}
                                         onChange={(e) => setAssignForm({ ...assignForm, end_time: e.target.value })}
                                         className="w-full px-2 py-1.5 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
-                                        disabled={assignForm.shift_type === 'Day Off' || assignForm.shift_type === 'Holiday'}
+                                        disabled={(() => {
+                                            const shift = customShifts.find(s => s.shift_name === assignForm.shift_type);
+                                            return shift ? (!shift.start_time) : (assignForm.shift_type === 'Day Off' || assignForm.shift_type === 'Holiday');
+                                        })()}
                                     />
                                 </div>
                             </div>
@@ -854,7 +1046,7 @@ const Roster = () => {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700  transition-colors shadow-sm"
+                                    className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700  transition-colors "
                                 >
                                     Save Shift
                                 </button>
@@ -926,15 +1118,23 @@ const Roster = () => {
                                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Shift Type</label>
                                 <select
                                     value={bulkAssignForm.shift_type}
-                                    onChange={(e) => setBulkAssignForm({ ...bulkAssignForm, shift_type: e.target.value })}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const shift = customShifts.find(s => s.shift_name === val);
+                                        setBulkAssignForm({
+                                            ...bulkAssignForm,
+                                            shift_type: val,
+                                            start_time: shift && shift.start_time ? shift.start_time.slice(0, 5) : '',
+                                            end_time: shift && shift.end_time ? shift.end_time.slice(0, 5) : ''
+                                        });
+                                    }}
                                     className="w-full px-3 py-2 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900"
                                 >
-                                    <option value="General Shift">General Shift (10:00 - 18:30)</option>
-                                    <option value="Day Off">Day Off</option>
-                                    <option value="Holiday">Holiday</option>
-                                    <option value="Morning Shift">Morning Shift (06:00 - 14:00)</option>
-                                    <option value="Evening Shift">Evening Shift (14:00 - 22:00)</option>
-                                    <option value="Night Shift">Night Shift (22:00 - 06:00)</option>
+                                    {customShifts.map((shift) => (
+                                        <option key={shift.id} value={shift.shift_name}>
+                                            {shift.shift_name} {shift.start_time ? `(${shift.start_time.slice(0, 5)} - ${shift.end_time.slice(0, 5)})` : ''}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -946,7 +1146,10 @@ const Roster = () => {
                                         value={bulkAssignForm.start_time}
                                         onChange={(e) => setBulkAssignForm({ ...bulkAssignForm, start_time: e.target.value })}
                                         className="w-full px-2 py-1.5 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
-                                        disabled={bulkAssignForm.shift_type === 'Day Off' || bulkAssignForm.shift_type === 'Holiday'}
+                                        disabled={(() => {
+                                            const shift = customShifts.find(s => s.shift_name === bulkAssignForm.shift_type);
+                                            return shift ? (!shift.start_time) : (bulkAssignForm.shift_type === 'Day Off' || bulkAssignForm.shift_type === 'Holiday');
+                                        })()}
                                     />
                                 </div>
                                 <div>
@@ -956,7 +1159,10 @@ const Roster = () => {
                                         value={bulkAssignForm.end_time}
                                         onChange={(e) => setBulkAssignForm({ ...bulkAssignForm, end_time: e.target.value })}
                                         className="w-full px-2 py-1.5 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
-                                        disabled={bulkAssignForm.shift_type === 'Day Off' || bulkAssignForm.shift_type === 'Holiday'}
+                                        disabled={(() => {
+                                            const shift = customShifts.find(s => s.shift_name === bulkAssignForm.shift_type);
+                                            return shift ? (!shift.start_time) : (bulkAssignForm.shift_type === 'Day Off' || bulkAssignForm.shift_type === 'Holiday');
+                                        })()}
                                     />
                                 </div>
                             </div>
@@ -1005,7 +1211,7 @@ const Roster = () => {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700  transition-colors shadow-sm"
+                                    className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700  transition-colors "
                                 >
                                     Assign Bulk Shifts
                                 </button>
@@ -1070,15 +1276,23 @@ const Roster = () => {
                                             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Shift Type</label>
                                             <select
                                                 value={assignForm.shift_type}
-                                                onChange={(e) => setAssignForm({ ...assignForm, shift_type: e.target.value })}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    const shift = customShifts.find(s => s.shift_name === val);
+                                                    setAssignForm({
+                                                        ...assignForm,
+                                                        shift_type: val,
+                                                        start_time: shift && shift.start_time ? shift.start_time.slice(0, 5) : '',
+                                                        end_time: shift && shift.end_time ? shift.end_time.slice(0, 5) : ''
+                                                    });
+                                                }}
                                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
                                             >
-                                                <option value="General Shift">General Shift (10:00 - 18:30)</option>
-                                                <option value="Day Off">Day Off</option>
-                                                <option value="Holiday">Holiday</option>
-                                                <option value="Morning Shift">Morning Shift (06:00 - 14:00)</option>
-                                                <option value="Evening Shift">Evening Shift (14:00 - 22:00)</option>
-                                                <option value="Night Shift">Night Shift (22:00 - 06:00)</option>
+                                                {customShifts.map((shift) => (
+                                                    <option key={shift.id} value={shift.shift_name}>
+                                                        {shift.shift_name} {shift.start_time ? `(${shift.start_time.slice(0, 5)} - ${shift.end_time.slice(0, 5)})` : ''}
+                                                    </option>
+                                                ))}
                                             </select>
                                         </div>
 
@@ -1089,7 +1303,10 @@ const Roster = () => {
                                                 value={assignForm.start_time}
                                                 onChange={(e) => setAssignForm({ ...assignForm, start_time: e.target.value })}
                                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
-                                                disabled={assignForm.shift_type === 'Day Off' || assignForm.shift_type === 'Holiday'}
+                                                disabled={(() => {
+                                                    const shift = customShifts.find(s => s.shift_name === assignForm.shift_type);
+                                                    return shift ? (!shift.start_time) : (assignForm.shift_type === 'Day Off' || assignForm.shift_type === 'Holiday');
+                                                })()}
                                             />
                                         </div>
 
@@ -1100,7 +1317,10 @@ const Roster = () => {
                                                 value={assignForm.end_time}
                                                 onChange={(e) => setAssignForm({ ...assignForm, end_time: e.target.value })}
                                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
-                                                disabled={assignForm.shift_type === 'Day Off' || assignForm.shift_type === 'Holiday'}
+                                                disabled={(() => {
+                                                    const shift = customShifts.find(s => s.shift_name === assignForm.shift_type);
+                                                    return shift ? (!shift.start_time) : (assignForm.shift_type === 'Day Off' || assignForm.shift_type === 'Holiday');
+                                                })()}
                                             />
                                         </div>
 
@@ -1163,7 +1383,7 @@ const Roster = () => {
                                     </button>
                                     <button
                                         onClick={handleAssignShift}
-                                        className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700  transition-colors shadow-sm flex items-center gap-1.5"
+                                        className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700  transition-colors  flex items-center gap-1.5"
                                     >
                                         <CheckCircle size={14} />
                                         Save Changes
@@ -1174,6 +1394,184 @@ const Roster = () => {
                     )}
                 </div>
             </div>
+
+            {/* Manage Custom Shifts Modal */}
+            {showManageShiftsModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setShowManageShiftsModal(false); resetShiftForm(); }}>
+                    <div className="bg-white max-w-4xl w-full shadow-2xl border border-slate-100 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                    <Database size={16} className="text-slate-700" />
+                                    Manage Custom Shifts
+                                </h3>
+                                <p className="text-[10px] text-gray-500 mt-0.5">Create, edit and delete shifts with custom times and styles</p>
+                            </div>
+                            <button
+                                onClick={() => { setShowManageShiftsModal(false); resetShiftForm(); }}
+                                className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-600 rounded transition-colors"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Body - Two columns */}
+                        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                            {/* Left: Shift List */}
+                            <div className="flex-1 p-4 overflow-y-auto border-r border-gray-100 bg-gray-50/30">
+                                <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3 flex items-center gap-1">
+                                    <ClockIcon size={12} className="text-indigo-600" />
+                                    Active Shifts ({customShifts.length})
+                                </h4>
+                                <div className="space-y-2">
+                                    {customShifts.map((shift) => {
+                                        const isSystem = ['General Shift', 'Day Off', 'Holiday'].includes(shift.shift_name);
+                                        return (
+                                            <div key={shift.id} className="flex items-center justify-between p-2.5 bg-white border border-gray-200 rounded  hover:border-gray-300 transition-colors">
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`px-2 py-1 text-xs font-semibold rounded ${shift.color} border border-gray-100 min-w-[36px] text-center`}>
+                                                        {shift.label}
+                                                    </span>
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-gray-800">{shift.shift_name}</p>
+                                                        <p className="text-[10px] text-gray-500 font-mono mt-0.5">
+                                                            {shift.start_time ? `${shift.start_time.slice(0, 5)} - ${shift.end_time.slice(0, 5)}` : 'Non-timed (Day Off/Holiday)'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => handleEditClick(shift)}
+                                                        className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                                        title="Edit Shift"
+                                                    >
+                                                        <Pencil size={12} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteCustomShift(shift.id, shift.shift_name)}
+                                                        className={`p-1 rounded transition-colors ${isSystem ? 'text-gray-300 cursor-not-allowed' : 'text-slate-500 hover:text-red-600 hover:bg-red-50'}`}
+                                                        disabled={isSystem}
+                                                        title={isSystem ? 'System shifts cannot be deleted' : 'Delete Shift'}
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Right: Form */}
+                            <div className="w-full md:w-80 p-5 bg-white flex flex-col justify-between overflow-y-auto">
+                                <form onSubmit={handleSaveShift} className="space-y-4">
+                                    <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider border-b pb-2">
+                                        {editingShiftId ? 'Edit Shift Details' : 'Create Custom Shift'}
+                                    </h4>
+
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Shift Name *</label>
+                                        <input
+                                            type="text"
+                                            value={shiftForm.shift_name}
+                                            onChange={(e) => setShiftForm({ ...shiftForm, shift_name: e.target.value })}
+                                            placeholder="e.g. Afternoon Shift"
+                                            className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Shorthand Label *</label>
+                                            <input
+                                                type="text"
+                                                value={shiftForm.label}
+                                                onChange={(e) => setShiftForm({ ...shiftForm, label: e.target.value.toUpperCase() })}
+                                                placeholder="e.g. AS"
+                                                maxLength={4}
+                                                className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-center font-bold"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Color Theme</label>
+                                            <select
+                                                value={shiftForm.color_preset}
+                                                onChange={(e) => setShiftForm({ ...shiftForm, color_preset: e.target.value })}
+                                                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                                            >
+                                                {COLOR_PRESETS.map((p) => (
+                                                    <option key={p.name} value={p.name}>{p.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-2.5 bg-gray-50 rounded border border-gray-150 flex items-center justify-between">
+                                        <span className="text-[10px] text-gray-500">Live Preview:</span>
+                                        {(() => {
+                                            const activePreset = COLOR_PRESETS.find(p => p.name === shiftForm.color_preset) || COLOR_PRESETS[0];
+                                            return (
+                                                <span className={`px-2.5 py-1 text-xs font-bold rounded ${activePreset.color} border border-gray-200 `}>
+                                                    {shiftForm.label || 'PRE'}
+                                                </span>
+                                            );
+                                        })()}
+                                    </div>
+
+                                    <div className="border-t pt-3 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Configure timings</span>
+                                            <span className="text-[8px] text-gray-400">(leave blank for non-timed)</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-[9px] font-semibold text-gray-500 mb-0.5 uppercase tracking-wider">Start Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={shiftForm.start_time}
+                                                    onChange={(e) => setShiftForm({ ...shiftForm, start_time: e.target.value })}
+                                                    className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-semibold text-gray-500 mb-0.5 uppercase tracking-wider">End Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={shiftForm.end_time}
+                                                    onChange={(e) => setShiftForm({ ...shiftForm, end_time: e.target.value })}
+                                                    className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 flex gap-2 border-t justify-end">
+                                        {editingShiftId && (
+                                            <button
+                                                type="button"
+                                                onClick={resetShiftForm}
+                                                className="px-3 py-1.5 text-xs font-semibold text-slate-500 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
+                                        )}
+                                        <button
+                                            type="submit"
+                                            className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-colors  flex items-center gap-1.5"
+                                        >
+                                            <CheckCircle size={12} />
+                                            {editingShiftId ? 'Update Shift' : 'Add Shift'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
