@@ -200,7 +200,7 @@ export default function PublicRegister() {
         branch_name: formData.branch_name,
         payment_mode: formData.payment_mode,
         beneficiary_name: formData.beneficiary_name || null,
-        status: formData.status,
+        status: 'Active',
         aadhar_front_image: uploadedUrls.aadharFront || null,
         aadhar_back_image: uploadedUrls.aadharBack || null,
         candidate_photo: uploadedUrls.candidatePhoto || null,
@@ -332,7 +332,7 @@ export default function PublicRegister() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Employee ID <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Employee ID<span className="text-red-500">*</span>{"  (as per biometric)"}</label>
                 <input
                   type="text"
                   name="employee_id"
@@ -488,14 +488,7 @@ export default function PublicRegister() {
                 <input type="text" name="beneficiary_name" value={formData.beneficiary_name} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500" />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Status</label>
-                <select name="status" value={formData.status} onChange={handleInputChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 bg-white">
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                  <option value="Left">Left</option>
-                </select>
-              </div>
+
             </div>
           </div>
 

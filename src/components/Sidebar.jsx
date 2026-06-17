@@ -23,7 +23,8 @@ const navItems = [
   },
   { to: '/payroll', label: 'Payroll', icon: DollarSign, id: 'payroll' },
   { to: '/misreport', label: 'MIS Report', icon: BarChart3, id: 'misReport' },
-  { to: '/admin-advance', label: 'Admin Advance', icon: Wallet, id: 'admin advance' },
+  { to: '/roaster', label: 'Roaster', icon: Wallet, id: 'roaster' },
+  { to: '/admin-advance', label: 'Admin Advance', icon: Wallet, id: 'admin advance' }
 ]
 
 export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
@@ -143,7 +144,7 @@ export default function Sidebar({ collapsed, setCollapsed, user, onLogout }) {
                     to={item.to}
                     end={item.to === '/'}
                     className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
+                      `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm  transition-all duration-200
                       ${isActive
                         ? 'bg-indigo-600/20 text-indigo-300'
                         : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'

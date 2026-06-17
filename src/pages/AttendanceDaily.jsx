@@ -475,7 +475,6 @@ const AttendanceDaily = () => {
       const { data, error } = await supabase
         .from('employees')
         .select('employee_id, name_as_per_aadhar, designation, joining_place')
-        .eq('status', 'Active')
         .order('name_as_per_aadhar');
 
       if (error) throw error;

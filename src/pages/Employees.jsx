@@ -8,7 +8,6 @@ const STORAGE_BUCKET = 'employee_documents'
 export default function EmployeeManagement() {
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [showEditPanel, setShowEditPanel] = useState(false) // Changed from showEditModal
@@ -19,6 +18,16 @@ export default function EmployeeManagement() {
   const [uploading, setUploading] = useState(false)
   const [editFormData, setEditFormData] = useState({})
   const [joiningCompanies, setJoiningCompanies] = useState([])
+
+  // File preview states for add form
+  const [filePreviews, setFilePreviews] = useState({
+    aadharFront: null,
+    aadharBack: null,
+    candidatePhoto: null,
+    panCard: null,
+    bankPassbook: null,
+    resume: null
+  })
 
   // File preview states for edit panel
   const [editFilePreviews, setEditFilePreviews] = useState({
@@ -52,7 +61,6 @@ export default function EmployeeManagement() {
     branch_name: '',
     payment_mode: 'Bank Transfer',
     beneficiary_name: '',
-    status: 'Active',
     aadharFront: null,
     aadharBack: null,
     candidatePhoto: null,
@@ -81,8 +89,7 @@ export default function EmployeeManagement() {
       current_account_no: 'ACC123456789',
       ifsc_code: 'SBIN0012345',
       branch_name: 'Andheri East',
-      payment_mode: 'Bank Transfer',
-      status: 'Active'
+      payment_mode: 'Bank Transfer'
     },
     {
       name_as_per_aadhar: 'Priya Sharma',
@@ -102,8 +109,7 @@ export default function EmployeeManagement() {
       current_account_no: 'ACC234567890',
       ifsc_code: 'HDFC0012345',
       branch_name: 'Connaught Place',
-      payment_mode: 'Bank Transfer',
-      status: 'Active'
+      payment_mode: 'Bank Transfer'
     }
   ]
 
@@ -205,19 +211,12 @@ export default function EmployeeManagement() {
     }
   }
 
-  const getStatusCount = (status) => {
-    if (status === 'all') return employees.length
-    return employees.filter(emp => emp.status?.toLowerCase() === status.toLowerCase()).length
-  }
-
   const filteredEmployees = employees.filter(emp => {
-    const matchesStatus = statusFilter === 'all' || emp.status?.toLowerCase() === statusFilter.toLowerCase()
-    const matchesSearch = searchTerm === '' ||
+    return searchTerm === '' ||
       emp.name_as_per_aadhar?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.employee_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.designation?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.mobile_no?.includes(searchTerm)
-    return matchesStatus && matchesSearch
   })
 
   const handleInputChange = (e) => {
@@ -228,6 +227,34 @@ export default function EmployeeManagement() {
   const handleEditInputChange = (e) => {
     const { name, value } = e.target
     setEditFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  // Handle file change in add form
+  const handleFileChange = (e, fieldName) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a valid image (JPEG, PNG) or PDF file')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size should be less than 5MB')
+      return
+    }
+
+    const previewUrl = URL.createObjectURL(file)
+
+    setFormData(prev => ({ ...prev, [fieldName]: file }))
+    setFilePreviews(prev => ({ ...prev, [fieldName]: previewUrl }))
+  }
+
+  // Remove file in add form
+  const handleRemoveFile = (fieldName) => {
+    setFormData(prev => ({ ...prev, [fieldName]: null }))
+    setFilePreviews(prev => ({ ...prev, [fieldName]: null }))
   }
 
   // Handle file change in edit panel
@@ -283,7 +310,6 @@ export default function EmployeeManagement() {
       ifsc_code: sample.ifsc_code,
       branch_name: sample.branch_name,
       payment_mode: sample.payment_mode,
-      status: sample.status,
       aadharFront: null,
       aadharBack: null,
       candidatePhoto: null,
@@ -345,7 +371,7 @@ export default function EmployeeManagement() {
         branch_name: formData.branch_name,
         payment_mode: formData.payment_mode,
         beneficiary_name: formData.beneficiary_name || null,
-        status: formData.status,
+        status: 'Active',
         aadhar_front_image: uploadedUrls.aadharFront || null,
         aadhar_back_image: uploadedUrls.aadharBack || null,
         candidate_photo: uploadedUrls.candidatePhoto || null,
@@ -405,7 +431,6 @@ export default function EmployeeManagement() {
         joining_place: editFormData.joining_place,
         designation: editFormData.designation,
         salary: editFormData.salary ? parseFloat(editFormData.salary) : null,
-        status: editFormData.status,
         candidate_email: editFormData.candidate_email || null,
         dob: editFormData.dob,
         gender: editFormData.gender,
@@ -467,7 +492,6 @@ export default function EmployeeManagement() {
       joining_place: employee.joining_place,
       designation: employee.designation,
       salary: employee.salary || '',
-      status: employee.status,
       candidate_email: employee.candidate_email || '',
       dob: employee.dob || '',
       gender: employee.gender || '',
@@ -523,7 +547,14 @@ export default function EmployeeManagement() {
       branch_name: '',
       payment_mode: 'Bank Transfer',
       beneficiary_name: '',
-      status: 'Active',
+      aadharFront: null,
+      aadharBack: null,
+      candidatePhoto: null,
+      panCard: null,
+      bankPassbook: null,
+      resume: null
+    })
+    setFilePreviews({
       aadharFront: null,
       aadharBack: null,
       candidatePhoto: null,
@@ -557,23 +588,54 @@ export default function EmployeeManagement() {
     }
   }
 
-  const handleUpdateStatus = async (employee, newStatus) => {
-    try {
-      const { error } = await supabase
-        .from('employees')
-        .update({ status: newStatus, updated_at: new Date() })
-        .eq('id', employee.id)
 
-      if (error) throw error
 
-      setEmployees(employees.map(emp =>
-        emp.id === employee.id ? { ...emp, status: newStatus } : emp
-      ))
-      alert(`Status updated to ${newStatus}`)
-    } catch (error) {
-      console.error('Error updating status:', error)
-      alert('Error updating status: ' + error.message)
-    }
+  // Render file upload component for add form
+  const renderFileUpload = (fieldName, label, icon, required = false) => {
+    return (
+      <div className="space-y-1">
+        <label className="block text-xs font-semibold text-gray-600">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+        <div className="flex items-center gap-2 mt-1">
+          {filePreviews[fieldName] ? (
+            <div className="relative">
+              {fieldName === 'resume' ? (
+                <div className="flex items-center gap-2 px-3 py-2 border rounded bg-gray-50 text-sm text-blue-600">
+                  <FileText size={16} />
+                  <span>Resume Attached</span>
+                </div>
+              ) : (
+                <img
+                  src={filePreviews[fieldName]}
+                  alt={fieldName}
+                  className="w-16 h-16 object-cover rounded border"
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => handleRemoveFile(fieldName)}
+                className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            <label className="flex items-center gap-2 px-4 py-2 border-2 border-dashed rounded hover:border-indigo-500 cursor-pointer transition-colors w-full justify-center bg-gray-50/50">
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                onChange={(e) => handleFileChange(e, fieldName)}
+                className="hidden"
+                required={required}
+              />
+              {icon}
+              <span className="text-sm text-gray-600">Upload File</span>
+            </label>
+          )}
+        </div>
+      </div>
+    )
   }
 
   // Render file upload component for edit panel
@@ -653,25 +715,6 @@ export default function EmployeeManagement() {
 
       {/* Filter and Search Section */}
       <div className="flex gap-4 mb-4 items-center flex-wrap">
-        <div className="relative">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="pl-9 pr-8 py-2 border border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none bg-white"
-          >
-            <option value="all">All Employees ({getStatusCount('all')})</option>
-            <option value="active">Active ({getStatusCount('active')})</option>
-            <option value="inactive">Inactive ({getStatusCount('inactive')})</option>
-            <option value="left">Left ({getStatusCount('left')})</option>
-          </select>
-          <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </div>
-
         <div className="relative flex-1 max-w-sm">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -697,18 +740,17 @@ export default function EmployeeManagement() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">Work Location</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Designation</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Salary</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan="10" className="text-center py-8 text-gray-500">Loading...</td>
+                <td colSpan="9" className="text-center py-8 text-gray-500">Loading...</td>
               </tr>
             ) : filteredEmployees.length === 0 ? (
               <tr>
-                <td colSpan="10" className="text-center py-8 text-gray-500">No employees found</td>
+                <td colSpan="9" className="text-center py-8 text-gray-500">No employees found</td>
               </tr>
             ) : (
               filteredEmployees.map((emp) => (
@@ -750,20 +792,7 @@ export default function EmployeeManagement() {
                   <td className="px-4 py-3 text-gray-600">
                     {emp.salary ? `₹${emp.salary.toLocaleString()}` : '-'}
                   </td>
-                  <td className="px-4 py-3">
-                    <select
-                      value={emp.status}
-                      onChange={(e) => handleUpdateStatus(emp, e.target.value)}
-                      className={`px-2 py-0.5 text-xs font-medium border-0 focus:ring-1 cursor-pointer ${emp.status === 'Active' ? 'bg-green-100 text-green-700' :
-                        emp.status === 'Inactive' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-red-100 text-red-700'
-                        }`}
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                      <option value="Left">Left</option>
-                    </select>
-                  </td>
+
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
                       <button onClick={() => openEditPanel(emp)} className="p-1 text-blue-600 hover:text-blue-700" title="Edit">
@@ -839,7 +868,7 @@ export default function EmployeeManagement() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID <span className="text-red-500">*</span>{" (as per biometric)"}</label>
                     <input
                       type="text"
                       name="employee_id"
@@ -986,14 +1015,22 @@ export default function EmployeeManagement() {
                     <input type="text" name="beneficiary_name" value={formData.beneficiary_name} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select name="status" value={formData.status} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                      <option value="Left">Left</option>
-                    </select>
+                  {/* Documents Section */}
+                  <div className="lg:col-span-3 mt-4">
+                    <h3 className="text-md font-medium text-gray-700 mb-3 pb-2 border-b border-gray-200 flex items-center gap-1.5">
+                      <Upload size={16} className="text-indigo-600" />
+                      Documents
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                      {renderFileUpload('candidatePhoto', 'Photo', <User size={14} />, true)}
+                      {renderFileUpload('aadharFront', 'Aadhar Front', <Image size={14} />, true)}
+                      {renderFileUpload('aadharBack', 'Aadhar Back', <Image size={14} />, true)}
+                      {renderFileUpload('panCard', 'PAN Card', <CreditCard size={14} />)}
+                      {renderFileUpload('bankPassbook', 'Passbook', <BookOpen size={14} />)}
+                      {renderFileUpload('resume', 'Resume', <FileText size={14} />)}
+                    </div>
                   </div>
+
                 </div>
               </div>
 
@@ -1363,19 +1400,7 @@ export default function EmployeeManagement() {
                         />
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Status</label>
-                        <select
-                          name="status"
-                          value={editFormData.status || 'Active'}
-                          onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
-                        >
-                          <option value="Active">Active</option>
-                          <option value="Inactive">Inactive</option>
-                          <option value="Left">Left</option>
-                        </select>
-                      </div>
+
                     </div>
                   </div>
                 </div>
@@ -1611,15 +1636,7 @@ export default function EmployeeManagement() {
                           className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Status</label>
-                        <div className="pt-1.5">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${selectedEmployee.status === 'Active' ? 'bg-green-100 text-green-700' :
-                            selectedEmployee.status === 'Inactive' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>{selectedEmployee.status}</span>
-                        </div>
-                      </div>
+
                     </div>
                   </div>
 

@@ -512,13 +512,13 @@ export default function LeaveManagement() {
                     required
                   >
                     <option value="">Select Employee</option>
-                    {employees.filter(emp => emp.status === 'Active').map((emp) => (
+                    {employees.filter(emp => emp.status !== 'Left').map((emp) => (
                       <option key={emp.employee_id} value={emp.employee_id}>
                         {emp.name_as_per_aadhar} ({emp.employee_id})
                       </option>
                     ))}
                   </select>
-                  {employees.filter(emp => emp.status === 'Active').length === 0 && (
+                  {employees.filter(emp => emp.status !== 'Left').length === 0 && (
                     <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                       <AlertTriangle size={12} /> No active employees found.
                     </p>
