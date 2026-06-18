@@ -715,7 +715,7 @@ export default function EmployeeManagement() {
   }
 
   return (
-    <div className="p-10 pt-5">
+    <div className="p-10 pt-5 pb-0">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
@@ -752,9 +752,9 @@ export default function EmployeeManagement() {
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+      <div className="bg-white border border-gray-200 overflow-x-auto overflow-y-scroll max-h-[75vh]">
+        <table className="w-full text-sm ">
+          <thead className="bg-gray-100 border-b border-gray-100 sticky top-0">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Employee ID</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
@@ -1316,7 +1316,7 @@ export default function EmployeeManagement() {
                         <input
                           type="date"
                           name="date_of_joining"
-                          value={editFormData.date_of_joining || ''} 
+                          value={editFormData.date_of_joining || ''}
                           onChange={handleEditInputChange}
                           className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
                           required
