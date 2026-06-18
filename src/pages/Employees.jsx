@@ -1316,7 +1316,7 @@ export default function EmployeeManagement() {
                         <input
                           type="date"
                           name="date_of_joining"
-                          value={editFormData.date_of_joining || ''}
+                          value={editFormData.date_of_joining || ''} 
                           onChange={handleEditInputChange}
                           className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
                           required

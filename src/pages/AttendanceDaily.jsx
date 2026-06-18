@@ -458,14 +458,37 @@ const AttendanceDaily = () => {
   const fetchAllEmployees = async () => {
     try {
       const { data, error } = await supabase
-        .from('employees')
-        .select('employee_id, name_as_per_aadhar, designation, joining_place')
-        .order('name_as_per_aadhar');
+        .from('attendance_logs')
+        .select(`
+        employee_id,
+        employee_name,
+        designation,
+        store_name
+      `)
+        .not('employee_id', 'is', null)
+        .order('employee_name');
 
       if (error) throw error;
-      setAllEmployees(data || []);
+
+      // Remove duplicate employees
+      const uniqueEmployees = [
+        ...new Map(
+          (data || []).map(emp => [
+            emp.employee_id,
+            {
+              employee_id: emp.employee_id,
+              employee_name: emp.employee_name,
+              designation: emp.designation,
+              store_name: emp.store_name
+            }
+          ])
+        ).values()
+      ];
+
+      setAllEmployees(uniqueEmployees);
+
     } catch (err) {
-      console.error('Error fetching employees:', err);
+      console.error('Error fetching attendance employees:', err);
     }
   };
 
@@ -832,12 +855,16 @@ const AttendanceDaily = () => {
         if (error) throw error;
         result = data;
       } else {
-        const employee = employees.find(e => e.id === employeeId);
+        const employee = allEmployees.find(
+          e => e.employee_id === employeeId
+        );
         const { data, error } = await supabase
           .from('attendance_logs')
           .insert({
             employee_id: employeeId,
-            employee_name: employee?.name || '',
+            employee_name: employee?.employee_name || '',
+            designation: employee?.designation || '',
+            store_name: employee?.store_name || '',
             attendance_date: date,
             status: newStatus,
             ...updateData
@@ -1198,7 +1225,7 @@ const AttendanceDaily = () => {
               <input
                 type="text"
                 placeholder="Search..."
-                className="w-full pl-7 pr-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                className="w-full pl-7 pr-2 py-1 border border-gray-200  focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -1211,7 +1238,7 @@ const AttendanceDaily = () => {
               <select
                 value={selectedStore}
                 onChange={(e) => setSelectedStore(e.target.value)}
-                className="w-full appearance-none pl-2 pr-6 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs bg-white font-medium text-gray-700"
+                className="w-full appearance-none pl-2 pr-6 py-1 border border-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs bg-white font-medium text-gray-700"
               >
                 <option value="ALL">All Stores</option>
                 {stores.map(store => (
@@ -1819,8 +1846,11 @@ const AttendanceDaily = () => {
                 >
                   <option value="">Select Employee</option>
                   {allEmployees.map(emp => (
-                    <option key={emp.employee_id} value={emp.employee_id}>
-                      {emp.name_as_per_aadhar} ({emp.employee_id})
+                    <option
+                      key={emp.employee_id}
+                      value={emp.employee_id}
+                    >
+                      ({emp.employee_id}) {emp.employee_name}
                     </option>
                   ))}
                 </select>

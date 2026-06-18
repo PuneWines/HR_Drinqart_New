@@ -1,20 +1,40 @@
 import { useState, useEffect } from 'react'
-import { Users, UserCheck, Clock, UserX, Briefcase, Calendar, TrendingUp, Award, PieChart, Filter, Search } from 'lucide-react'
+import { Users, UserCheck, Clock, UserX, Briefcase, Calendar, TrendingUp, Award, PieChart, Filter, Search, AlertCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 export default function Dashboard() {
+    // Employee stats
     const [totalEmployee, setTotalEmployee] = useState(0)
     const [activeEmployee, setActiveEmployee] = useState(0)
     const [leftEmployee, setLeftEmployee] = useState(0)
     const [inactiveEmployee, setInactiveEmployee] = useState(0)
     const [leaveThisMonth, setLeaveThisMonth] = useState(0)
+
+    // Attendance stats for today
+    const [todayAttendance, setTodayAttendance] = useState({
+        present: 0,
+        absent: 0,
+        late: 0,
+        halfDay: 0,
+        totalPresent: 0,
+        totalAbsent: 0
+    })
+
     const [loading, setLoading] = useState(true)
     const [recentEmployees, setRecentEmployees] = useState([])
     const [statusDistribution, setStatusDistribution] = useState([])
+    const [todayDate, setTodayDate] = useState('')
 
     // Fetch employees and calculate stats
     useEffect(() => {
+        const today = new Date()
+        const yyyy = today.getFullYear()
+        const mm = String(today.getMonth() + 1).padStart(2, '0')
+        const dd = String(today.getDate()).padStart(2, '0')
+        setTodayDate(`${yyyy}-${mm}-${dd}`)
+
         fetchEmployees()
+        fetchTodayAttendance()
     }, [])
 
     const fetchEmployees = async () => {
@@ -93,6 +113,72 @@ export default function Dashboard() {
         }
     }
 
+    // Fetch today's attendance statistics
+    const fetchTodayAttendance = async () => {
+        try {
+            const today = new Date()
+            const yyyy = today.getFullYear()
+            const mm = String(today.getMonth() + 1).padStart(2, '0')
+            const dd = String(today.getDate()).padStart(2, '0')
+            const todayStr = `${yyyy}-${mm}-${dd}`
+
+            // Fetch all attendance records for today
+            const { data, error } = await supabase
+                .from('attendance_logs')
+                .select('status, employee_id')
+                .eq('attendance_date', todayStr)
+
+            if (error) throw error
+
+            // Count by status
+            let present = 0
+            let late = 0
+            let absent = 0
+            let halfDay = 0
+
+            data?.forEach(record => {
+                switch (record.status) {
+                    case 'Present':
+                        present++
+                        break
+                    case 'Late':
+                        late++
+                        break
+                    case 'Absent':
+                        absent++
+                        break
+                    case 'Half Day':
+                        halfDay++
+                        break
+                    default:
+                        break
+                }
+            })
+
+            // Total present = Present + Late (Late is also considered present)
+            const totalPresent = present + late
+            const totalAbsent = absent + halfDay // Half Day is also considered absent for some metrics
+
+            setTodayAttendance({
+                present,
+                absent,
+                late,
+                halfDay,
+                totalPresent,
+                totalAbsent
+            })
+
+        } catch (error) {
+            console.error('Error fetching today\'s attendance:', error)
+        }
+    }
+
+    // Refresh attendance data (can be called after sync)
+    const refreshAttendance = async () => {
+        await fetchTodayAttendance()
+        await fetchEmployees()
+    }
+
     const formatDate = (dateString) => {
         const date = new Date(dateString)
         const now = new Date()
@@ -140,15 +226,16 @@ export default function Dashboard() {
         return `conic-gradient(${segments.join(', ')})`
     }
 
-    const StatCard = ({ icon: Icon, title, value, color, bgColor, trend }) => (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow">
+    const StatCard = ({ icon: Icon, title, value, color, bgColor, trend, subtext }) => (
+        <div className="bg-white  border border-gray-200 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between">
                 <div className="space-y-2">
                     <p className="text-sm text-gray-500 font-medium">{title}</p>
                     <h3 className="text-3xl font-bold text-gray-900">{value}</h3>
                     {trend && <p className="text-xs text-green-600">{trend}</p>}
+                    {subtext && <p className="text-xs text-gray-400">{subtext}</p>}
                 </div>
-                <div className={`p-3 rounded-lg ${bgColor}`}>
+                <div className={`p-3  ${bgColor}`}>
                     <Icon size={24} className={color} />
                 </div>
             </div>
@@ -165,13 +252,19 @@ export default function Dashboard() {
                         Dashboard
                     </h1>
                     <p className="text-gray-500 text-sm mt-1">
-                        Overview of employee statistics and activities
+                        Overview of employee statistics and today's attendance
                     </p>
                 </div>
                 <div className="text-right">
                     <p className="text-sm text-gray-500">
                         {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
                     </p>
+                    <button
+                        onClick={refreshAttendance}
+                        className="mt-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                    >
+                        Refresh Data
+                    </button>
                 </div>
             </div>
 
@@ -185,8 +278,51 @@ export default function Dashboard() {
                 </div>
             ) : (
                 <>
+                    {/* Today's Attendance Stats Cards */}
+                    <div className="mb-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Clock size={20} className="text-indigo-600" />
+                            <h2 className="text-lg font-semibold text-gray-900">Today's Attendance ({todayDate})</h2>
+                            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                                {todayAttendance.totalPresent + todayAttendance.totalAbsent} records
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <StatCard
+                                icon={UserCheck}
+                                title="Present"
+                                value={todayAttendance.present}
+                                color="text-green-600"
+                                bgColor="bg-green-50"
+                                subtext={`${todayAttendance.totalPresent} total present`}
+                            />
+                            <StatCard
+                                icon={Clock}
+                                title="Late Arrivals"
+                                value={todayAttendance.late}
+                                color="text-orange-600"
+                                bgColor="bg-orange-50"
+                                subtext="After 10:10 AM IST"
+                            />
+                            <StatCard
+                                icon={UserX}
+                                title="Absent"
+                                value={todayAttendance.absent}
+                                color="text-red-600"
+                                bgColor="bg-red-50"
+                            />
+                            <StatCard
+                                icon={AlertCircle}
+                                title="Half Day"
+                                value={todayAttendance.halfDay}
+                                color="text-yellow-600"
+                                bgColor="bg-yellow-50"
+                            />
+                        </div>
+                    </div>
+
                     {/* Summary Stats Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                    {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                         <StatCard
                             icon={Users}
                             title="Total Employees"
@@ -216,12 +352,12 @@ export default function Dashboard() {
                             color="text-red-600"
                             bgColor="bg-red-50"
                         />
-                    </div>
+                    </div> */}
 
                     {/* Charts and Activity Section */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
                         {/* Employee Status Distribution - Pie Chart */}
-                        <div className="lg:col-span-2 bg-white rounded-lg border border-gray-200 p-6">
+                        <div className="lg:col-span-2 bg-white  border border-gray-200 p-6">
                             <div className="flex items-center justify-between mb-6">
                                 <h2 className="text-lg font-semibold text-gray-900">Employee Status Distribution</h2>
                                 <PieChart size={20} className="text-gray-400" />
@@ -246,7 +382,7 @@ export default function Dashboard() {
                                     {/* Legend */}
                                     <div className="flex-1 space-y-3">
                                         {statusDistribution.map((status) => (
-                                            <div key={status.name} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                                            <div key={status.name} className="flex items-center justify-between p-3  hover:bg-gray-50 transition-colors">
                                                 <div className="flex items-center gap-3">
                                                     <div className={`w-3 h-3 rounded-full ${status.bgColor.replace('100', '500')}`} />
                                                     <span className="text-sm font-medium text-gray-700">{status.name}</span>
@@ -289,7 +425,7 @@ export default function Dashboard() {
                         </div>
 
                         {/* Recent Activities */}
-                        <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <div className="bg-white  border border-gray-200 p-6">
                             <div className="flex items-center justify-between mb-6">
                                 <h2 className="text-lg font-semibold text-gray-900">Recent Activities</h2>
                                 <Calendar size={20} className="text-gray-400" />
@@ -308,8 +444,8 @@ export default function Dashboard() {
                                             <div className="text-right">
                                                 <p className="text-xs text-gray-400">{formatDate(emp.date_of_joining)}</p>
                                                 <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${emp.status === 'Active' ? 'bg-green-100 text-green-700' :
-                                                        emp.status === 'Inactive' ? 'bg-amber-100 text-amber-700' :
-                                                            'bg-red-100 text-red-700'
+                                                    emp.status === 'Inactive' ? 'bg-amber-100 text-amber-700' :
+                                                        'bg-red-100 text-red-700'
                                                     }`}>
                                                     {emp.status}
                                                 </span>
@@ -327,7 +463,7 @@ export default function Dashboard() {
 
                     {/* Bottom Stats Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+                        <div className="bg-gradient-to-br from-blue-500 to-blue-600  shadow-lg p-6 text-white">
                             <div className="flex items-center justify-between mb-4">
                                 <TrendingUp size={28} />
                                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full">This Year</span>
@@ -339,7 +475,7 @@ export default function Dashboard() {
                             </div>
                         </div>
 
-                        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+                        <div className="bg-gradient-to-br from-green-500 to-green-600  shadow-lg p-6 text-white">
                             <div className="flex items-center justify-between mb-4">
                                 <Award size={28} />
                                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Current</span>
@@ -351,17 +487,7 @@ export default function Dashboard() {
                             </div>
                         </div>
 
-                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
-                            <div className="flex items-center justify-between mb-4">
-                                <Briefcase size={28} />
-                                <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Status</span>
-                            </div>
-                            <p className="text-3xl font-bold">{statusDistribution.filter(s => s.count > 0).length}</p>
-                            <p className="text-sm opacity-90 mt-1">Active Status Types</p>
-                            <div className="mt-4 pt-4 border-t border-white/20">
-                                <p className="text-xs opacity-75">Active, Inactive, Left</p>
-                            </div>
-                        </div>
+
                     </div>
                 </>
             )}
