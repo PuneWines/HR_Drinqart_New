@@ -242,6 +242,10 @@ export default function EmployeeManagement() {
     return matchesSearch && matchesShop;
   })
 
+  const addFormEmployeeIdExists = formData.employee_id ? employees.some(emp => emp.employee_id === formData.employee_id) : false;
+  const editFormEmployeeIdExists = editFormData.employee_id && editingEmployee ? employees.some(emp => emp.employee_id === editFormData.employee_id && emp.id !== editingEmployee.id) : false;
+
+
   const handleInputChange = (e) => {
     let { name, value } = e.target
     if (['name_as_per_aadhar', 'father_name', 'joining_place', 'branch_name', 'beneficiary_name', 'ifsc_code'].includes(name)) {
@@ -488,7 +492,7 @@ export default function EmployeeManagement() {
         resume: editFormData.resume
       }
 
-      const uploadedUrls = await uploadEmployeeDocuments(currentEmployee.employee_id, files)
+      const uploadedUrls = await uploadEmployeeDocuments(editFormData.employee_id, files)
 
       // ADD employee_id TO THE UPDATE DATA
       const updateData = {
@@ -521,9 +525,30 @@ export default function EmployeeManagement() {
         resume_url: uploadedUrls.resume || currentEmployee.resume_url
       }
 
-      // ... rest of the function (update query, fetch employees, etc.)
+      const { error } = await supabase
+        .from('employees')
+        .update(updateData)
+        .eq('id', editingEmployee.id)
+
+      if (error) throw error
+
+      await fetchEmployees()
+
+      alert('Employee updated successfully!')
+      setShowEditPanel(false)
+      setEditingEmployee(null)
+      setEditFormData({})
+      setEditFilePreviews({
+        aadharFront: null,
+        aadharBack: null,
+        candidatePhoto: null,
+        panCard: null,
+        bankPassbook: null,
+        resume: null
+      })
     } catch (error) {
-      // ... error handling
+      console.error('Error updating employee:', error)
+      alert('Error updating employee: ' + error.message)
     } finally {
       setSaving(false)
       setUploading(false)
@@ -826,8 +851,8 @@ export default function EmployeeManagement() {
                 All Shops (Clear)
               </div>
               {joiningCompanies
-                .filter(company => 
-                  !shopSearchInput || 
+                .filter(company =>
+                  !shopSearchInput ||
                   company.company_name?.toLowerCase().includes(shopSearchInput.toLowerCase())
                 )
                 .map((company) => (
@@ -838,21 +863,20 @@ export default function EmployeeManagement() {
                       setShopSearchInput(company.company_name)
                       setIsShopDropdownOpen(false)
                     }}
-                    className={`px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer ${
-                      shopFilter === company.company_name ? 'bg-indigo-50 font-medium text-indigo-600' : ''
-                    }`}
+                    className={`px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer ${shopFilter === company.company_name ? 'bg-indigo-50 font-medium text-indigo-600' : ''
+                      }`}
                   >
                     {company.company_name}
                   </div>
                 ))}
-              {joiningCompanies.filter(company => 
-                !shopSearchInput || 
+              {joiningCompanies.filter(company =>
+                !shopSearchInput ||
                 company.company_name?.toLowerCase().includes(shopSearchInput.toLowerCase())
               ).length === 0 && (
-                <div className="px-3 py-2 text-sm text-gray-400 italic">
-                  No shops found
-                </div>
-              )}
+                  <div className="px-3 py-2 text-sm text-gray-400 italic">
+                    No shops found
+                  </div>
+                )}
             </div>
           )}
         </div>
@@ -1015,9 +1039,14 @@ export default function EmployeeManagement() {
                       value={formData.employee_id}
                       onChange={handleInputChange}
                       placeholder="e.g., 1001"
-                      className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                      className={`w-full px-3 py-2 border text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 ${
+                        addFormEmployeeIdExists ? 'border-red-500 focus:ring-red-500 focus:border-red-500 bg-red-50' : 'border-gray-300 bg-white'
+                      }`}
                       required
                     />
+                    {addFormEmployeeIdExists && (
+                      <p className="text-red-500 text-xs mt-1">Employee ID already exists in DB!</p>
+                    )}
                   </div>
 
                   <div>
@@ -1323,8 +1352,13 @@ export default function EmployeeManagement() {
                           value={editFormData.employee_id || ''}
                           onChange={handleEditInputChange}
                           placeholder="Enter Employee ID"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          className={`w-full px-3 py-2 text-sm border focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 ${
+                            editFormEmployeeIdExists ? 'border-red-500 focus:ring-red-500 focus:border-red-500 bg-red-50 text-red-900' : 'border-gray-300 bg-white text-gray-800'
+                          }`}
                         />
+                        {editFormEmployeeIdExists && (
+                          <p className="text-red-500 text-xs mt-1">Employee ID already exists in DB!</p>
+                        )}
                       </div>
 
                       <div>

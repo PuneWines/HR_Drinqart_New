@@ -92,8 +92,8 @@ export default function JoiningCompany() {
       {/* Alert banner */}
       {alert && (
         <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3  shadow-lg border text-sm animate-fade-in ${alert.type === 'success'
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-            : 'bg-rose-50 border-rose-200 text-rose-800'
+          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          : 'bg-rose-50 border-rose-200 text-rose-800'
           }`}>
           {alert.type === 'success' ? <CheckCircle size={18} /> : <ShieldAlert size={18} />}
           <span>{alert.message}</span>
@@ -170,7 +170,7 @@ export default function JoiningCompany() {
             <div className="flex-1 overflow-y-auto">
               {loading ? (
                 <div className="h-full flex items-center justify-center">
-                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent  animate-spin"></div>
+                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full  animate-spin"></div>
                 </div>
               ) : filteredCompanies.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
