@@ -430,12 +430,32 @@ export default function EmployeeManagement() {
     setUploading(true)
 
     try {
+      // Get current employee data including employee_id
       const { data: currentEmployee } = await supabase
         .from('employees')
         .select('employee_id, aadhar_front_image, aadhar_back_image, candidate_photo, pan_card_image, bank_passbook_image, resume_url')
         .eq('id', editingEmployee.id)
         .single()
 
+      // ADD THIS DUPLICATE CHECK
+      // Check if employee_id has changed and validate duplicates
+      if (editFormData.employee_id !== currentEmployee.employee_id) {
+        const { data: existingEmployee } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('employee_id', editFormData.employee_id)
+          .neq('id', editingEmployee.id)
+          .single()
+
+        if (existingEmployee) {
+          alert('Employee ID already exists!')
+          setSaving(false)
+          setUploading(false)
+          return
+        }
+      }
+
+      // Prepare files for upload
       const files = {
         aadharFront: editFormData.aadharFront,
         aadharBack: editFormData.aadharBack,
@@ -447,7 +467,9 @@ export default function EmployeeManagement() {
 
       const uploadedUrls = await uploadEmployeeDocuments(currentEmployee.employee_id, files)
 
+      // ADD employee_id TO THE UPDATE DATA
       const updateData = {
+        employee_id: editFormData.employee_id,  // <-- ADD THIS LINE
         name_as_per_aadhar: editFormData.name_as_per_aadhar,
         date_of_joining: editFormData.date_of_joining,
         mobile_no: editFormData.mobile_no,
@@ -476,30 +498,9 @@ export default function EmployeeManagement() {
         resume_url: uploadedUrls.resume || currentEmployee.resume_url
       }
 
-      const { error } = await supabase
-        .from('employees')
-        .update(updateData)
-        .eq('id', editingEmployee.id)
-
-      if (error) throw error
-
-      await fetchEmployees()
-
-      alert('Employee updated successfully!')
-      setShowEditPanel(false)
-      setEditingEmployee(null)
-      setEditFormData({})
-      setEditFilePreviews({
-        aadharFront: null,
-        aadharBack: null,
-        candidatePhoto: null,
-        panCard: null,
-        bankPassbook: null,
-        resume: null
-      })
+      // ... rest of the function (update query, fetch employees, etc.)
     } catch (error) {
-      console.error('Error updating employee:', error)
-      alert('Error updating employee: ' + error.message)
+      // ... error handling
     } finally {
       setSaving(false)
       setUploading(false)
@@ -509,6 +510,7 @@ export default function EmployeeManagement() {
   const openEditPanel = (employee) => {
     setEditingEmployee(employee)
     setEditFormData({
+      employee_id: employee.employee_id,  // <-- ADD THIS LINE
       name_as_per_aadhar: employee.name_as_per_aadhar,
       date_of_joining: employee.date_of_joining,
       mobile_no: employee.mobile_no,
@@ -749,7 +751,18 @@ export default function EmployeeManagement() {
             className="w-full pl-9 pr-3 py-2 border border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
         </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 ">
+            <Users size={18} className="text-indigo-600" />
+            <span className="text-sm font-semibold text-gray-700">Total Employees:</span>
+            <span className="text-sm font-bold text-indigo-600">{employees.length}</span>
+          </div>
+
+
+        </div>
+
       </div>
+
 
       {/* Table */}
       <div className="bg-white border border-gray-200 overflow-x-auto overflow-y-scroll max-h-[75vh]">
@@ -1203,9 +1216,11 @@ export default function EmployeeManagement() {
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Employee ID</label>
                         <input
                           type="text"
-                          value={editingEmployee.employee_id}
-                          disabled
-                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                          name="employee_id"
+                          value={editFormData.employee_id || ''}
+                          onChange={handleEditInputChange}
+                          placeholder="Enter Employee ID"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
                         />
                       </div>
 
