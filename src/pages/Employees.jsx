@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Users, UserPlus, Search, Eye, Edit, Trash2, X, Save, XCircle, Sparkles, Filter, Upload, Image, File, User, CreditCard, BookOpen, FileText, ExternalLink, ChevronLeft } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -18,6 +18,11 @@ export default function EmployeeManagement() {
   const [uploading, setUploading] = useState(false)
   const [editFormData, setEditFormData] = useState({})
   const [joiningCompanies, setJoiningCompanies] = useState([])
+  const [shopFilter, setShopFilter] = useState('')
+  const [shopSearchInput, setShopSearchInput] = useState('')
+  const [isShopDropdownOpen, setIsShopDropdownOpen] = useState(false)
+  const shopDropdownRef = useRef(null)
+
 
   // File preview states for add form
   const [filePreviews, setFilePreviews] = useState({
@@ -179,6 +184,19 @@ export default function EmployeeManagement() {
     }
   }, [showForm, showEditPanel])
 
+  // Click outside handler to close the searchable shop dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (shopDropdownRef.current && !shopDropdownRef.current.contains(event.target)) {
+        setIsShopDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [shopDropdownRef])
+
   const fetchJoiningCompanies = async () => {
     try {
       const { data, error } = await supabase
@@ -212,11 +230,16 @@ export default function EmployeeManagement() {
   }
 
   const filteredEmployees = employees.filter(emp => {
-    return searchTerm === '' ||
+    const matchesSearch = searchTerm === '' ||
       emp.name_as_per_aadhar?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.employee_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.designation?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      emp.joining_company_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.mobile_no?.includes(searchTerm)
+
+    const matchesShop = shopFilter === '' || emp.joining_company_name === shopFilter
+
+    return matchesSearch && matchesShop;
   })
 
   const handleInputChange = (e) => {
@@ -664,6 +687,7 @@ export default function EmployeeManagement() {
     )
   }
 
+
   // Render file upload component for edit panel
   const renderEditFileUpload = (fieldName, label, icon) => {
     return (
@@ -745,22 +769,101 @@ export default function EmployeeManagement() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by name, ID, designation or mobile..."
+            placeholder="Search by name, ID, designation, mobile or shop..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-2 border border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
         </div>
+
+        <div className="relative w-56" ref={shopDropdownRef}>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="All Shops"
+              value={isShopDropdownOpen ? shopSearchInput : (shopFilter || '')}
+              onChange={(e) => {
+                setShopSearchInput(e.target.value)
+                setIsShopDropdownOpen(true)
+                if (!e.target.value) {
+                  setShopFilter('')
+                }
+              }}
+              onFocus={() => {
+                setShopSearchInput(shopFilter)
+                setIsShopDropdownOpen(true)
+              }}
+              className="w-full pl-3 pr-8 py-2 border border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white text-gray-700"
+            />
+            {shopFilter ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShopFilter('')
+                  setShopSearchInput('')
+                  setIsShopDropdownOpen(false)
+                }}
+                className="absolute right-7 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X size={14} />
+              </button>
+            ) : null}
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+              ▼
+            </span>
+          </div>
+
+          {isShopDropdownOpen && (
+            <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 shadow-lg max-h-60 overflow-y-auto rounded-md">
+              <div
+                onClick={() => {
+                  setShopFilter('')
+                  setShopSearchInput('')
+                  setIsShopDropdownOpen(false)
+                }}
+                className="px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer font-medium border-b border-gray-100"
+              >
+                All Shops (Clear)
+              </div>
+              {joiningCompanies
+                .filter(company => 
+                  !shopSearchInput || 
+                  company.company_name?.toLowerCase().includes(shopSearchInput.toLowerCase())
+                )
+                .map((company) => (
+                  <div
+                    key={company.id}
+                    onClick={() => {
+                      setShopFilter(company.company_name)
+                      setShopSearchInput(company.company_name)
+                      setIsShopDropdownOpen(false)
+                    }}
+                    className={`px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer ${
+                      shopFilter === company.company_name ? 'bg-indigo-50 font-medium text-indigo-600' : ''
+                    }`}
+                  >
+                    {company.company_name}
+                  </div>
+                ))}
+              {joiningCompanies.filter(company => 
+                !shopSearchInput || 
+                company.company_name?.toLowerCase().includes(shopSearchInput.toLowerCase())
+              ).length === 0 && (
+                <div className="px-3 py-2 text-sm text-gray-400 italic">
+                  No shops found
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 ">
             <Users size={18} className="text-indigo-600" />
             <span className="text-sm font-semibold text-gray-700">Total Employees:</span>
-            <span className="text-sm font-bold text-indigo-600">{employees.length}</span>
+            <span className="text-sm font-bold text-indigo-600">{filteredEmployees.length}</span>
           </div>
-
-
         </div>
-
       </div>
 
 
