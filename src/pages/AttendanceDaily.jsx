@@ -425,28 +425,48 @@ const AttendanceDaily = () => {
       const startDateStr = getLocalDateString(startOfMonth);
       const endDateStr = getLocalDateString(endOfMonth);
 
-      let query = supabase
-        .from('attendance_logs')
-        .select('*')
-        .gte('attendance_date', startDateStr)
-        .lte('attendance_date', endDateStr)
-        .order('attendance_date', { ascending: true });
+      // Always fetch today's records directly (separate query) to guarantee today's data
+      const [monthResult, todayResult] = await Promise.all([
+        supabase
+          .from('attendance_logs')
+          .select('*')
+          .gte('attendance_date', startDateStr)
+          .lte('attendance_date', endDateStr)
+          .order('attendance_date', { ascending: true }),
+        supabase
+          .from('attendance_logs')
+          .select('*')
+          .eq('attendance_date', todayDate)
+          .order('employee_name', { ascending: true })
+      ]);
 
-      const { data, error } = await query;
+      if (monthResult.error) throw monthResult.error;
+      if (todayResult.error) throw todayResult.error;
 
-      if (error) throw error;
+      const monthData = monthResult.data || [];
+      const todayData = todayResult.data || [];
 
-      setAttendanceData(data || []);
+      // Merge: start with monthly data, then overlay today's fresh records
+      const withoutToday = monthData.filter(r => r.attendance_date !== todayDate);
+      const merged = [...withoutToday, ...todayData];
 
-      // Extract unique employees
-      const uniqueEmployees = [...new Map(data.map(item => [item.employee_id, {
-        id: item.employee_id,
-        name: item.employee_name,
-        designation: item.designation,
-        store_name: item.store_name
-      }])).values()];
+      setAttendanceData(merged);
+
+      // Extract unique employees from merged data
+      const uniqueEmployees = [
+        ...new Map(
+          merged.map(item => [item.employee_id, {
+            id: item.employee_id,
+            name: item.employee_name,
+            designation: item.designation,
+            store_name: item.store_name
+          }])
+        ).values()
+      ];
 
       setEmployees(uniqueEmployees);
+
+      console.log(`Loaded ${merged.length} records (month: ${withoutToday.length} + today: ${todayData.length})`);
     } catch (err) {
       console.error('Error fetching from Supabase:', err);
       setError(err.message);
