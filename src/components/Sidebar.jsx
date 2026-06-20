@@ -9,7 +9,7 @@ import {
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, id: 'nav-dashboard' },
   { to: '/employees', label: 'Employees', icon: Users, id: 'nav-employees' },
-  { to: '/joining-company', label: 'Joining Companies', icon: Building2, id: 'joining-company' },
+  { to: '/joining-shop', label: 'Joining Shop', icon: Building2, id: 'joining-shop' },
   { to: '/leave', label: 'Leave Management', icon: Calendar, id: 'nav-leave' },
   {
     to: '/attendance',

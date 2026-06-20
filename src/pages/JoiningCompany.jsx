@@ -105,10 +105,10 @@ export default function JoiningCompany() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Building2 className="text-indigo-600 animate-pulse" />
-            Joining Companies
+            Joining Shops
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Configure entity/company names for employee profiles and registrations.
+            Configure shop names for employee profiles and registrations.
           </p>
         </div>
       </div>
@@ -117,11 +117,11 @@ export default function JoiningCompany() {
         {/* Left Column: Form Card */}
         <div className="lg:col-span-1">
           <div className="bg-white  shadow-md border border-slate-100 p-5 space-y-4">
-            <h3 className="text-base font-bold text-slate-800">Add New Company</h3>
+            <h3 className="text-base font-bold text-slate-800">Add New Shops</h3>
             <form onSubmit={handleAddCompany} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
-                  Company Name
+                  Shops Name
                 </label>
                 <input
                   type="text"
@@ -142,7 +142,7 @@ export default function JoiningCompany() {
                 ) : (
                   <Plus size={16} />
                 )}
-                Add Company
+                Add Shop
               </button>
             </form>
           </div>
@@ -153,12 +153,12 @@ export default function JoiningCompany() {
           <div className="bg-white  shadow-md border border-slate-100 overflow-hidden flex flex-col h-[500px]">
             {/* Search Header */}
             <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 bg-slate-50/50">
-              <span className="text-sm font-bold text-slate-700">Company List ({filteredCompanies.length})</span>
+              <span className="text-sm font-bold text-slate-700">Shop List ({filteredCompanies.length})</span>
               <div className="relative w-full sm:w-64">
                 <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
                 <input
                   type="text"
-                  placeholder="Search companies..."
+                  placeholder="Search Shop..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
@@ -175,14 +175,14 @@ export default function JoiningCompany() {
               ) : filteredCompanies.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
                   <Building2 size={48} className="opacity-40" />
-                  <p className="text-sm">No companies found</p>
+                  <p className="text-sm">No Shop found</p>
                 </div>
               ) : (
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase bg-slate-50/50">
                       <th className="py-3 px-4">#</th>
-                      <th className="py-3 px-4">Company Name</th>
+                      <th className="py-3 px-4">Shop Name</th>
                       <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>

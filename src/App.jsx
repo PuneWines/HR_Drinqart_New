@@ -14,6 +14,7 @@ import { Toaster } from 'react-hot-toast'
 import PublicRegister from './pages/PublicRegister'
 import JoiningCompany from './pages/JoiningCompany'
 import Roaster from './pages/Roaster'
+// import './App.css'  
 
 function App() {
   const [collapsed, setCollapsed] = useState(false)
@@ -80,7 +81,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/employees" element={<Employees />} />
-              <Route path="/joining-company" element={<JoiningCompany />} />
+              <Route path="/joining-shop" element={<JoiningCompany />} />
               <Route path="/attendance" element={<Navigate to="/attendance/daily" replace />} />
               <Route path="/attendance/daily" element={<Attendance />} />
               <Route path="/attendance/monthly" element={<Attendance />} />

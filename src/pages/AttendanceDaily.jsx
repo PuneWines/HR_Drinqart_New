@@ -1171,12 +1171,12 @@ const AttendanceDaily = () => {
       </div>
 
       {/* View Toggle - Compact */}
-      <div className="flex flex-wrap justify-between items-center gap-2 mb-3 bg-white p-2 rounded border border-gray-200">
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-3 border-gray-200">
         <div className="flex items-center gap-2">
           <div className="flex bg-gray-100 p-0.5 rounded-md">
             <button
               onClick={() => setViewMode('calendar')}
-              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-all ${viewMode === 'calendar'
+              className={`flex items-center gap-1.5 px-3 h-10 py-1 text-xs font-medium rounded transition-all ${viewMode === 'calendar'
                 ? 'bg-white text-indigo-600 '
                 : 'text-gray-600 hover:text-gray-900'
                 }`}
@@ -1198,7 +1198,7 @@ const AttendanceDaily = () => {
 
           <button
             onClick={() => setIsMarkModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white  font-medium text-xs transition-colors shadow-sm"
+            className="flex h-10 items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white  font-medium text-xs transition-colors shadow-sm"
           >
             <Plus size={12} />
             Mark Attendance

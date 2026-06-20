@@ -21,17 +21,15 @@ const Attendance = () => {
     return (
         <div className="min-h-screen bg-gray-50">
             {/* Header Section */}
-            <div className="bg-white border-b border-gray-200 sticky top-0 z-20">
+            <div className="bg-gray-100 border-gray-200 sticky top-0 z-20">
                 <div className="px-8 py-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                 <Clock size={24} className="text-indigo-600" />
                                 Attendance Management
                             </h1>
-                            <p className="text-sm text-gray-500 mt-1">
-                                Track daily and monthly employee attendance records
-                            </p>
+
                         </div>
                         <div className="hidden md:flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
                             <Calendar size={14} className="text-gray-400" />
@@ -60,7 +58,7 @@ const Attendance = () => {
                     <AttendanceMonthly />
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 

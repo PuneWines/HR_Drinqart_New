@@ -768,13 +768,13 @@ export default function EmployeeManagement() {
   return (
     <div className="p-10 pt-5 pb-0">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-2">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <Users size={28} />
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <Users size={22} />
             Employees
           </h1>
-          <p className="text-gray-500 text-sm mt-1">Manage employee records</p>
+
         </div>
         <button
           onClick={() => {
@@ -892,8 +892,8 @@ export default function EmployeeManagement() {
 
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 overflow-x-auto overflow-y-scroll max-h-[75vh]">
-        <table className="w-full text-sm ">
+      <div className="bg-white border border-gray-200 overflow-x-auto overflow-y-scroll max-h-[77vh]">
+        <table className="w-full text-xs ">
           <thead className="bg-gray-100 border-b border-gray-100 sticky top-0">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Employee ID</th>
@@ -919,7 +919,7 @@ export default function EmployeeManagement() {
             ) : (
               filteredEmployees.map((emp) => (
                 <tr key={emp.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">
+                  <td className="px-4 py-3 text-gray-900">
                     {emp.employee_id}
                   </td>
                   <td className="px-4 py-3">
@@ -1039,9 +1039,8 @@ export default function EmployeeManagement() {
                       value={formData.employee_id}
                       onChange={handleInputChange}
                       placeholder="e.g., 1001"
-                      className={`w-full px-3 py-2 border text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 ${
-                        addFormEmployeeIdExists ? 'border-red-500 focus:ring-red-500 focus:border-red-500 bg-red-50' : 'border-gray-300 bg-white'
-                      }`}
+                      className={`w-full px-3 py-2 border text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 ${addFormEmployeeIdExists ? 'border-red-500 focus:ring-red-500 focus:border-red-500 bg-red-50' : 'border-gray-300 bg-white'
+                        }`}
                       required
                     />
                     {addFormEmployeeIdExists && (
@@ -1352,9 +1351,8 @@ export default function EmployeeManagement() {
                           value={editFormData.employee_id || ''}
                           onChange={handleEditInputChange}
                           placeholder="Enter Employee ID"
-                          className={`w-full px-3 py-2 text-sm border focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 ${
-                            editFormEmployeeIdExists ? 'border-red-500 focus:ring-red-500 focus:border-red-500 bg-red-50 text-red-900' : 'border-gray-300 bg-white text-gray-800'
-                          }`}
+                          className={`w-full px-3 py-2 text-sm border focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 ${editFormEmployeeIdExists ? 'border-red-500 focus:ring-red-500 focus:border-red-500 bg-red-50 text-red-900' : 'border-gray-300 bg-white text-gray-800'
+                            }`}
                         />
                         {editFormEmployeeIdExists && (
                           <p className="text-red-500 text-xs mt-1">Employee ID already exists in DB!</p>
