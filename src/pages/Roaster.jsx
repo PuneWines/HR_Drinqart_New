@@ -19,7 +19,9 @@ import {
     Pencil,
     User,
     Database,
-    Clock as ClockIcon
+    Clock as ClockIcon,
+    LayoutGrid,
+    CalendarRange
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -79,12 +81,15 @@ const isSameDay = (date1, date2) => {
         date1.getDate() === date2.getDate();
 };
 
-
-
 const Roster = () => {
+    const [viewMode, setViewMode] = useState('weekly'); // 'weekly' or 'range'
     const [employees, setEmployees] = useState([]);
     const [rosterData, setRosterData] = useState(new Map());
     const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date()));
+    const [dateRange, setDateRange] = useState({
+        fromDate: new Date(),
+        toDate: addDays(new Date(), 6)
+    });
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -166,7 +171,6 @@ const Roster = () => {
             };
 
             if (editingShiftId) {
-                // Update
                 const { error } = await supabase
                     .from('custom_shift')
                     .update(payload)
@@ -175,7 +179,6 @@ const Roster = () => {
                 if (error) throw error;
                 toast.success('Shift updated successfully');
             } else {
-                // Create
                 const { error } = await supabase
                     .from('custom_shift')
                     .insert(payload);
@@ -269,7 +272,6 @@ const Roster = () => {
             };
         }
 
-        // Static fallbacks
         if (shiftType === 'Not Assigned') {
             return { color: 'bg-red-200 text-black', label: '+', bgColor: 'bg-gray-50' };
         }
@@ -301,12 +303,12 @@ const Roster = () => {
         fetchCustomShifts();
     }, []);
 
-    // Fetch roster data when week changes
+    // Fetch roster data when week or date range changes
     useEffect(() => {
         if (employees.length > 0) {
             fetchRosterData();
         }
-    }, [currentWeekStart, employees]);
+    }, [currentWeekStart, dateRange, viewMode, employees]);
 
     const fetchEmployees = async () => {
         try {
@@ -327,14 +329,21 @@ const Roster = () => {
     const fetchRosterData = async () => {
         setLoading(true);
         try {
-            const weekStart = formatDate(currentWeekStart, 'yyyy-MM-dd');
-            const weekEnd = formatDate(addDays(currentWeekStart, 6), 'yyyy-MM-dd');
+            let fromDate, toDate;
+
+            if (viewMode === 'weekly') {
+                fromDate = formatDate(currentWeekStart, 'yyyy-MM-dd');
+                toDate = formatDate(addDays(currentWeekStart, 6), 'yyyy-MM-dd');
+            } else {
+                fromDate = formatDate(dateRange.fromDate, 'yyyy-MM-dd');
+                toDate = formatDate(dateRange.toDate, 'yyyy-MM-dd');
+            }
 
             const { data, error } = await supabase
                 .from('shift_roster')
                 .select('*')
-                .gte('date', weekStart)
-                .lte('date', weekEnd);
+                .gte('date', fromDate)
+                .lte('date', toDate);
 
             if (error) throw error;
 
@@ -352,12 +361,22 @@ const Roster = () => {
         }
     };
 
-    const getWeekDays = () => {
-        const days = [];
-        for (let i = 0; i < 7; i++) {
-            days.push(addDays(currentWeekStart, i));
+    const getDisplayDays = () => {
+        if (viewMode === 'weekly') {
+            const days = [];
+            for (let i = 0; i < 7; i++) {
+                days.push(addDays(currentWeekStart, i));
+            }
+            return days;
+        } else {
+            const days = [];
+            let currentDate = new Date(dateRange.fromDate);
+            while (currentDate <= dateRange.toDate) {
+                days.push(new Date(currentDate));
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            return days;
         }
-        return days;
     };
 
     const getEmployeeRosterForDay = (employeeId, date) => {
@@ -494,8 +513,8 @@ const Roster = () => {
             start_date: '',
             end_date: '',
             shift_type: 'General Shift',
-            start_time: existing?.start_time || '09:30',
-            end_time: existing?.end_time || '19:30',
+            start_time: '09:30',
+            end_time: '19:30',
             remark: '',
             days_of_week: {
                 monday: true,
@@ -549,14 +568,19 @@ const Roster = () => {
     };
 
     const handleOpenBulkAssignModal = () => {
-        const today = new Date();
-        const weekStart = startOfWeek(today);
-        const weekEnd = addDays(weekStart, 6);
+        let startDate, endDate;
+        if (viewMode === 'weekly') {
+            startDate = currentWeekStart;
+            endDate = addDays(currentWeekStart, 6);
+        } else {
+            startDate = dateRange.fromDate;
+            endDate = dateRange.toDate;
+        }
 
         setBulkAssignForm({
             ...bulkAssignForm,
-            start_date: formatDate(weekStart, 'yyyy-MM-dd'),
-            end_date: formatDate(weekEnd, 'yyyy-MM-dd')
+            start_date: formatDate(startDate, 'yyyy-MM-dd'),
+            end_date: formatDate(endDate, 'yyyy-MM-dd')
         });
         setShowBulkAssignModal(true);
     };
@@ -584,11 +608,11 @@ const Roster = () => {
     };
 
     const downloadExcel = () => {
-        const weekDays = getWeekDays();
+        const displayDays = getDisplayDays();
         const exportData = [];
 
         filteredEmployees.forEach(employee => {
-            weekDays.forEach(day => {
+            displayDays.forEach(day => {
                 const schedule = getEmployeeRosterForDay(employee.employee_id, day);
                 exportData.push({
                     'Employee ID': employee.employee_id,
@@ -608,10 +632,17 @@ const Roster = () => {
         const worksheet = XLSX.utils.json_to_sheet(exportData);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Shift_Roster');
-        XLSX.writeFile(workbook, `shift_roster_${formatDate(currentWeekStart, 'yyyy-MM-dd')}.xlsx`);
+
+        let fileName;
+        if (viewMode === 'weekly') {
+            fileName = `shift_roster_${formatDate(currentWeekStart, 'yyyy-MM-dd')}.xlsx`;
+        } else {
+            fileName = `shift_roster_${formatDate(dateRange.fromDate, 'yyyy-MM-dd')}_to_${formatDate(dateRange.toDate, 'yyyy-MM-dd')}.xlsx`;
+        }
+        XLSX.writeFile(workbook, fileName);
     };
 
-    const weekDays = getWeekDays();
+    const displayDays = getDisplayDays();
     const today = new Date();
 
     const getDayStats = (date) => {
@@ -647,6 +678,29 @@ const Roster = () => {
         return matchesSearch && matchesDept;
     });
 
+    // Handle date range change
+    const handleDateRangeChange = (type, value) => {
+        const newFromDate = type === 'from' ? new Date(value) : dateRange.fromDate;
+        const newToDate = type === 'to' ? new Date(value) : dateRange.toDate;
+
+        if (newFromDate > newToDate) {
+            toast.error('From date cannot be after to date');
+            return;
+        }
+
+        setDateRange({
+            fromDate: newFromDate,
+            toDate: newToDate
+        });
+    };
+
+    // Quick range presets
+    const setQuickRange = (days) => {
+        const fromDate = new Date();
+        const toDate = addDays(fromDate, days - 1);
+        setDateRange({ fromDate, toDate });
+    };
+
     return (
         <div className="p-3 pl-7 pr-5">
             {/* Header */}
@@ -657,7 +711,7 @@ const Roster = () => {
                         Shift Roster
                     </h1>
                     <p className="text-gray-500 text-[11px] mt-0.5">
-                        Manage employee shifts and schedules in weekly view
+                        Manage employee shifts and schedules
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -697,8 +751,32 @@ const Roster = () => {
                 </div>
             </div>
 
+            {/* View Mode Tabs */}
+            <div className="flex items-center gap-2 mb-3 border-b border-gray-200">
+                <button
+                    onClick={() => setViewMode('weekly')}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors border-b-2 ${viewMode === 'weekly'
+                            ? 'border-indigo-600 text-indigo-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                >
+                    <LayoutGrid size={14} />
+                    Weekly View
+                </button>
+                <button
+                    onClick={() => setViewMode('range')}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors border-b-2 ${viewMode === 'range'
+                            ? 'border-indigo-600 text-indigo-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                >
+                    <CalendarRange size={14} />
+                    Date Range View
+                </button>
+            </div>
+
             {/* Status Legend */}
-            <div className="bg-white border border-gray-200 p-2 mb-3  rounded-sm">
+            <div className="bg-white border border-gray-200 p-2 mb-3 rounded-sm">
                 <div className="flex flex-wrap gap-3 items-center">
                     <span className="text-[11px] font-semibold text-gray-700">Shift Types:</span>
                     {customShifts.map((shift) => (
@@ -720,78 +798,166 @@ const Roster = () => {
             </div>
 
             {/* Filters */}
-            <div className="bg-white  border border-gray-200 p-2 mb-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-                    <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Search Employee</label>
-                        <div className="relative">
-                            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+            <div className="bg-white border border-gray-200 p-2 mb-3">
+                {viewMode === 'weekly' ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Search Employee</label>
+                            <div className="relative">
+                                <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search by name or ID..."
+                                    className="w-full pl-7 pr-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Filter by Department</label>
+                            <div className="relative">
+                                <select
+                                    value={selectedDepartment}
+                                    onChange={(e) => setSelectedDepartment(e.target.value)}
+                                    className="w-full appearance-none pl-2 pr-6 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs bg-white font-medium text-gray-700"
+                                >
+                                    <option value="ALL">All Departments</option>
+                                    {departments.map(dept => (
+                                        <option key={dept} value={dept}>{dept}</option>
+                                    ))}
+                                </select>
+                                <Filter size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-medium text-gray-500 mb-0.5 text-center">Week</label>
+                            <div className="flex items-center justify-center gap-1">
+                                <button
+                                    onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}
+                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                >
+                                    <ChevronLeft size={14} />
+                                </button>
+                                <span className="text-xs font-semibold text-gray-800 min-w-[100px] text-center">
+                                    {formatDate(currentWeekStart, 'dd MMM')} - {formatDate(addDays(currentWeekStart, 6), 'dd MMM yyyy')}
+                                </span>
+                                <button
+                                    onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}
+                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                >
+                                    <ChevronRight size={14} />
+                                </button>
+                                <button
+                                    onClick={() => setCurrentWeekStart(startOfWeek(new Date()))}
+                                    className="ml-1 px-2 py-0.5 text-[10px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                                >
+                                    Today
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Search Employee</label>
+                            <div className="relative">
+                                <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search by name or ID..."
+                                    className="w-full pl-7 pr-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Filter by Department</label>
+                            <div className="relative">
+                                <select
+                                    value={selectedDepartment}
+                                    onChange={(e) => setSelectedDepartment(e.target.value)}
+                                    className="w-full appearance-none pl-2 pr-6 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs bg-white font-medium text-gray-700"
+                                >
+                                    <option value="ALL">All Departments</option>
+                                    {departments.map(dept => (
+                                        <option key={dept} value={dept}>{dept}</option>
+                                    ))}
+                                </select>
+                                <Filter size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">From Date</label>
                             <input
-                                type="text"
-                                placeholder="Search by name or ID..."
-                                className="w-full pl-7 pr-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                                type="date"
+                                value={formatDate(dateRange.fromDate, 'yyyy-MM-dd')}
+                                onChange={(e) => handleDateRangeChange('from', e.target.value)}
+                                className="w-full px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
                             />
                         </div>
-                    </div>
 
-                    <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Filter by Department</label>
-                        <div className="relative">
-                            <select
-                                value={selectedDepartment}
-                                onChange={(e) => setSelectedDepartment(e.target.value)}
-                                className="w-full appearance-none pl-2 pr-6 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs bg-white font-medium text-gray-700"
-                            >
-                                <option value="ALL">All Departments</option>
-                                {departments.map(dept => (
-                                    <option key={dept} value={dept}>{dept}</option>
-                                ))}
-                            </select>
-                            <Filter size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        <div>
+                            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">To Date</label>
+                            <input
+                                type="date"
+                                value={formatDate(dateRange.toDate, 'yyyy-MM-dd')}
+                                onChange={(e) => handleDateRangeChange('to', e.target.value)}
+                                className="w-full px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                            />
+                        </div>
+
+                        <div className="md:col-span-4">
+                            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                                <span className="text-[10px] font-medium text-gray-500">Quick Ranges:</span>
+                                <button
+                                    onClick={() => setQuickRange(7)}
+                                    className="px-2 py-0.5 text-[10px] bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                                >
+                                    Week
+                                </button>
+                                <button
+                                    onClick={() => setQuickRange(14)}
+                                    className="px-2 py-0.5 text-[10px] bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                                >
+                                    Fortnight
+                                </button>
+                                <button
+                                    onClick={() => setQuickRange(30)}
+                                    className="px-2 py-0.5 text-[10px] bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                                >
+                                    Month
+                                </button>
+                                <button
+                                    onClick={() => setQuickRange(1)}
+                                    className="px-2 py-0.5 text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors"
+                                >
+                                    Today
+                                </button>
+                                <span className="text-[10px] text-gray-400 ml-auto">
+                                    {displayDays.length} days • {formatDate(dateRange.fromDate, 'dd MMM yyyy')} - {formatDate(dateRange.toDate, 'dd MMM yyyy')}
+                                </span>
+                            </div>
                         </div>
                     </div>
-
-                    <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5 text-center">Week</label>
-                        <div className="flex items-center justify-center gap-1">
-                            <button
-                                onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}
-                                className="p-1 hover:bg-gray-100 rounded transition-colors"
-                            >
-                                <ChevronLeft size={14} />
-                            </button>
-                            <span className="text-xs font-semibold text-gray-800 min-w-[100px] text-center">
-                                {formatDate(currentWeekStart, 'dd MMM')} - {formatDate(addDays(currentWeekStart, 6), 'dd MMM yyyy')}
-                            </span>
-                            <button
-                                onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}
-                                className="p-1 hover:bg-gray-100 rounded transition-colors"
-                            >
-                                <ChevronRight size={14} />
-                            </button>
-                            <button
-                                onClick={() => setCurrentWeekStart(startOfWeek(new Date()))}
-                                className="ml-1 px-2 py-0.5 text-[10px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                            >
-                                Today
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                )}
             </div>
 
             {/* Roster Table */}
-            <div className="bg-white  border border-gray-200 overflow-hidden">
+            <div className="bg-white border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)]">
                     <table className="w-full text-xs relative border-collapse">
-                        <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20 ">
+                        <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20">
                             <tr>
                                 <th className="sticky top-0 left-0 bg-gray-50 px-2 py-1.5 font-medium text-gray-600 text-[10px] z-30 w-[170px] border-r border-gray-200">
                                     Employee
                                 </th>
-                                {weekDays.map((day, index) => {
+                                {displayDays.map((day, index) => {
                                     const stats = getDayStats(day);
                                     const isToday = isSameDay(day, today);
                                     return (
@@ -821,7 +987,7 @@ const Roster = () => {
                         <tbody className="divide-y divide-gray-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={8} className="text-center py-6">
+                                    <td colSpan={displayDays.length + 1} className="text-center py-6">
                                         <div className="flex items-center justify-center gap-1 text-gray-500 text-xs">
                                             <Loader2 size={16} className="text-indigo-600 animate-spin" />
                                             Loading roster data...
@@ -831,7 +997,7 @@ const Roster = () => {
                             ) : filteredEmployees.length > 0 ? (
                                 filteredEmployees.map((employee) => (
                                     <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="sticky left-0 bg-white hover:bg-gray-50 z-10 px-2 py-1.5 border-r  border-gray-200">
+                                        <td className="sticky left-0 bg-white hover:bg-gray-50 z-10 px-2 py-1.5 border-r border-gray-200">
                                             <div className="flex items-center gap-1.5">
                                                 <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
                                                     {employee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
@@ -843,7 +1009,7 @@ const Roster = () => {
                                                 </div>
                                             </div>
                                         </td>
-                                        {weekDays.map((day, dayIndex) => {
+                                        {displayDays.map((day, dayIndex) => {
                                             const schedule = getEmployeeRosterForDay(employee.employee_id, day);
                                             const isPast = day < new Date() && !isSameDay(day, new Date());
                                             const config = getShiftConfig(schedule.shift_type);
@@ -877,7 +1043,7 @@ const Roster = () => {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={8} className="text-center py-8">
+                                    <td colSpan={displayDays.length + 1} className="text-center py-8">
                                         <div className="flex flex-col items-center justify-center text-gray-400">
                                             <Users size={32} className="mb-2" />
                                             <p className="text-xs font-medium">No employees found</p>
@@ -893,44 +1059,44 @@ const Roster = () => {
 
             {/* Stats Cards */}
             <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div className="bg-white  border border-gray-200 p-3">
+                <div className="bg-white border border-gray-200 p-3">
                     <div className="flex items-center gap-2">
                         <Users size={14} className="text-indigo-500" />
                         <div className="text-[10px] text-gray-500">Total Employees</div>
                     </div>
                     <div className="text-lg font-bold text-gray-800 mt-1">{employees.length}</div>
                 </div>
-                <div className="bg-white  border border-gray-200 p-3">
+                <div className="bg-white border border-gray-200 p-3">
                     <div className="flex items-center gap-2">
                         <CheckCircle size={14} className="text-green-500" />
-                        <div className="text-[10px] text-gray-500">Assigned This Week</div>
+                        <div className="text-[10px] text-gray-500">Assigned This Period</div>
                     </div>
                     <div className="text-lg font-bold text-green-600 mt-1">
-                        {weekDays.reduce((acc, day) => {
+                        {displayDays.reduce((acc, day) => {
                             const stats = getDayStats(day);
                             return acc + stats.assigned;
                         }, 0)}
                     </div>
                 </div>
-                <div className="bg-white  border border-gray-200 p-3">
+                <div className="bg-white border border-gray-200 p-3">
                     <div className="flex items-center gap-2">
                         <Calendar size={14} className="text-red-500" />
-                        <div className="text-[10px] text-gray-500">Holidays This Week</div>
+                        <div className="text-[10px] text-gray-500">Holidays This Period</div>
                     </div>
                     <div className="text-lg font-bold text-red-600 mt-1">
-                        {weekDays.reduce((acc, day) => {
+                        {displayDays.reduce((acc, day) => {
                             const stats = getDayStats(day);
                             return acc + stats.holiday;
                         }, 0)}
                     </div>
                 </div>
-                <div className="bg-white  border border-gray-200 p-3">
+                <div className="bg-white border border-gray-200 p-3">
                     <div className="flex items-center gap-2">
                         <Clock size={14} className="text-gray-500" />
-                        <div className="text-[10px] text-gray-500">Unassigned This Week</div>
+                        <div className="text-[10px] text-gray-500">Unassigned This Period</div>
                     </div>
                     <div className="text-lg font-bold text-gray-600 mt-1">
-                        {weekDays.reduce((acc, day) => {
+                        {displayDays.reduce((acc, day) => {
                             const stats = getDayStats(day);
                             const totalEmployees = employees.length;
                             return acc + (totalEmployees - stats.total);
@@ -986,7 +1152,7 @@ const Roster = () => {
                                             end_time: shift && shift.end_time ? shift.end_time.slice(0, 5) : ''
                                         });
                                     }}
-                                    className="w-full px-3 py-2 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900"
+                                    className="w-full px-3 py-2 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900"
                                 >
                                     {customShifts.map((shift) => (
                                         <option key={shift.id} value={shift.shift_name}>
@@ -1003,7 +1169,7 @@ const Roster = () => {
                                         type="time"
                                         value={assignForm.start_time}
                                         onChange={(e) => setAssignForm({ ...assignForm, start_time: e.target.value })}
-                                        className="w-full px-2 py-1.5 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
+                                        className="w-full px-2 py-1.5 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
                                         disabled={(() => {
                                             const shift = customShifts.find(s => s.shift_name === assignForm.shift_type);
                                             return shift ? (!shift.start_time) : (assignForm.shift_type === 'Day Off' || assignForm.shift_type === 'Holiday');
@@ -1016,7 +1182,7 @@ const Roster = () => {
                                         type="time"
                                         value={assignForm.end_time}
                                         onChange={(e) => setAssignForm({ ...assignForm, end_time: e.target.value })}
-                                        className="w-full px-2 py-1.5 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
+                                        className="w-full px-2 py-1.5 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
                                         disabled={(() => {
                                             const shift = customShifts.find(s => s.shift_name === assignForm.shift_type);
                                             return shift ? (!shift.start_time) : (assignForm.shift_type === 'Day Off' || assignForm.shift_type === 'Holiday');
@@ -1032,7 +1198,7 @@ const Roster = () => {
                                     value={assignForm.remark}
                                     onChange={(e) => setAssignForm({ ...assignForm, remark: e.target.value })}
                                     placeholder="Add a remark..."
-                                    className="w-full px-3 py-2 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                    className="w-full px-3 py-2 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                                 />
                             </div>
 
@@ -1040,13 +1206,13 @@ const Roster = () => {
                                 <button
                                     type="button"
                                     onClick={() => setShowAssignModal(false)}
-                                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-gray-300 hover:bg-gray-50  transition-colors"
+                                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-gray-300 hover:bg-gray-50 transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700  transition-colors "
+                                    className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
                                 >
                                     Save Shift
                                 </button>
@@ -1079,7 +1245,7 @@ const Roster = () => {
                                 <select
                                     value={bulkAssignForm.employee_id}
                                     onChange={(e) => setBulkAssignForm({ ...bulkAssignForm, employee_id: e.target.value })}
-                                    className="w-full px-3 py-2 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900"
+                                    className="w-full px-3 py-2 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900"
                                     required
                                 >
                                     <option value="">Select Employee</option>
@@ -1098,7 +1264,7 @@ const Roster = () => {
                                         type="date"
                                         value={bulkAssignForm.start_date}
                                         onChange={(e) => setBulkAssignForm({ ...bulkAssignForm, start_date: e.target.value })}
-                                        className="w-full px-2 py-1.5 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
+                                        className="w-full px-2 py-1.5 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
                                         required
                                     />
                                 </div>
@@ -1108,7 +1274,7 @@ const Roster = () => {
                                         type="date"
                                         value={bulkAssignForm.end_date}
                                         onChange={(e) => setBulkAssignForm({ ...bulkAssignForm, end_date: e.target.value })}
-                                        className="w-full px-2 py-1.5 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
+                                        className="w-full px-2 py-1.5 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
                                         required
                                     />
                                 </div>
@@ -1128,7 +1294,7 @@ const Roster = () => {
                                             end_time: shift && shift.end_time ? shift.end_time.slice(0, 5) : ''
                                         });
                                     }}
-                                    className="w-full px-3 py-2 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900"
+                                    className="w-full px-3 py-2 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900"
                                 >
                                     {customShifts.map((shift) => (
                                         <option key={shift.id} value={shift.shift_name}>
@@ -1145,7 +1311,7 @@ const Roster = () => {
                                         type="time"
                                         value={bulkAssignForm.start_time}
                                         onChange={(e) => setBulkAssignForm({ ...bulkAssignForm, start_time: e.target.value })}
-                                        className="w-full px-2 py-1.5 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
+                                        className="w-full px-2 py-1.5 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
                                         disabled={(() => {
                                             const shift = customShifts.find(s => s.shift_name === bulkAssignForm.shift_type);
                                             return shift ? (!shift.start_time) : (bulkAssignForm.shift_type === 'Day Off' || bulkAssignForm.shift_type === 'Holiday');
@@ -1158,7 +1324,7 @@ const Roster = () => {
                                         type="time"
                                         value={bulkAssignForm.end_time}
                                         onChange={(e) => setBulkAssignForm({ ...bulkAssignForm, end_time: e.target.value })}
-                                        className="w-full px-2 py-1.5 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
+                                        className="w-full px-2 py-1.5 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-gray-900"
                                         disabled={(() => {
                                             const shift = customShifts.find(s => s.shift_name === bulkAssignForm.shift_type);
                                             return shift ? (!shift.start_time) : (bulkAssignForm.shift_type === 'Day Off' || bulkAssignForm.shift_type === 'Holiday');
@@ -1174,7 +1340,7 @@ const Roster = () => {
                                     value={bulkAssignForm.remark}
                                     onChange={(e) => setBulkAssignForm({ ...bulkAssignForm, remark: e.target.value })}
                                     placeholder="Add a remark..."
-                                    className="w-full px-3 py-2 text-xs border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                    className="w-full px-3 py-2 text-xs border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                                 />
                             </div>
 
@@ -1205,13 +1371,13 @@ const Roster = () => {
                                 <button
                                     type="button"
                                     onClick={() => setShowBulkAssignModal(false)}
-                                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-gray-300 hover:bg-gray-50  transition-colors"
+                                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-gray-300 hover:bg-gray-50 transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700  transition-colors "
+                                    className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
                                 >
                                     Assign Bulk Shifts
                                 </button>
@@ -1259,7 +1425,7 @@ const Roster = () => {
 
                             {/* Content */}
                             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                                <div className="bg-white  border border-gray-200 p-6 space-y-6">
+                                <div className="bg-white border border-gray-200 p-6 space-y-6">
                                     <h3 className="text-lg font-medium text-gray-900 pb-2 border-b border-gray-100">
                                         Shift Details
                                     </h3>
@@ -1338,7 +1504,7 @@ const Roster = () => {
 
                                     {/* Current Shift Info */}
                                     {selectedEmployee.roster && (
-                                        <div className="bg-slate-50  p-4 border border-slate-100">
+                                        <div className="bg-slate-50 p-4 border border-slate-100">
                                             <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Current Shift Details</h4>
                                             <div className="space-y-2 text-sm">
                                                 <div className="flex justify-between py-1 border-b border-dashed border-gray-200">
@@ -1367,7 +1533,7 @@ const Roster = () => {
                             <div className="flex items-center justify-between p-4 border-t bg-gray-50">
                                 <button
                                     onClick={() => handleDeleteRoster(selectedEmployee.employee_id, selectedDate)}
-                                    className="px-3 py-1.5 text-xs font-semibold text-red-600 hover:text-red-800 hover:bg-red-50  transition-colors border border-red-300"
+                                    className="px-3 py-1.5 text-xs font-semibold text-red-600 hover:text-red-800 hover:bg-red-50 transition-colors border border-red-300"
                                 >
                                     Delete Shift
                                 </button>
@@ -1377,13 +1543,13 @@ const Roster = () => {
                                             setIsSlidePanelOpen(false);
                                             setSelectedEmployee(null);
                                         }}
-                                        className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-gray-300 hover:bg-gray-50  transition-colors"
+                                        className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-gray-300 hover:bg-gray-50 transition-colors"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         onClick={handleAssignShift}
-                                        className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700  transition-colors  flex items-center gap-1.5"
+                                        className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-1.5"
                                     >
                                         <CheckCircle size={14} />
                                         Save Changes
@@ -1428,7 +1594,7 @@ const Roster = () => {
                                     {customShifts.map((shift) => {
                                         const isSystem = ['General Shift', 'Day Off', 'Holiday'].includes(shift.shift_name);
                                         return (
-                                            <div key={shift.id} className="flex items-center justify-between p-2.5 bg-white border border-gray-200 rounded  hover:border-gray-300 transition-colors">
+                                            <div key={shift.id} className="flex items-center justify-between p-2.5 bg-white border border-gray-200 rounded hover:border-gray-300 transition-colors">
                                                 <div className="flex items-center gap-3">
                                                     <span className={`px-2 py-1 text-xs font-semibold rounded ${shift.color} border border-gray-100 min-w-[36px] text-center`}>
                                                         {shift.label}
@@ -1514,7 +1680,7 @@ const Roster = () => {
                                         {(() => {
                                             const activePreset = COLOR_PRESETS.find(p => p.name === shiftForm.color_preset) || COLOR_PRESETS[0];
                                             return (
-                                                <span className={`px-2.5 py-1 text-xs font-bold rounded ${activePreset.color} border border-gray-200 `}>
+                                                <span className={`px-2.5 py-1 text-xs font-bold rounded ${activePreset.color} border border-gray-200`}>
                                                     {shiftForm.label || 'PRE'}
                                                 </span>
                                             );
@@ -1560,7 +1726,7 @@ const Roster = () => {
                                         )}
                                         <button
                                             type="submit"
-                                            className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-colors  flex items-center gap-1.5"
+                                            className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-colors flex items-center gap-1.5"
                                         >
                                             <CheckCircle size={12} />
                                             {editingShiftId ? 'Update Shift' : 'Add Shift'}

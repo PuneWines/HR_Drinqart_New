@@ -15,7 +15,7 @@ const DEVICES = [
 const JOINING_API_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch';
 
 // IST Timezone offset (UTC+5:30)
-const IST_OFFSET = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes in milliseconds
+const IST_OFFSET = 5.5 * 60 * 60 * 1000;
 
 // Format to ISO string in its original timezone (no offset)
 const formatToISTISOString = (timeStr) => {
@@ -153,7 +153,6 @@ const isLatePunch = (utcDateStr) => {
     const minute = parseInt(parts.find(p => p.type === 'minute').value, 10);
     const totalMinutes = hour * 60 + minute;
 
-    // 10:10 AM IST = 10*60 + 10 = 610 minutes
     const thresholdMinutes = 10 * 60 + 10;
     return totalMinutes > thresholdMinutes;
   } catch (e) {
@@ -170,7 +169,7 @@ const STATUS_CONFIG = {
   'Holiday': { color: 'bg-purple-100 text-purple-700', label: 'Hol', fullLabel: 'Holiday', bgColor: 'bg-purple-200' },
   'Day Off': { color: 'bg-gray-100 text-gray-700', label: 'DO', fullLabel: 'Day Off', bgColor: 'bg-gray-200' },
   'On Leave': { color: 'bg-blue-100 text-blue-700', label: 'Lv', fullLabel: 'On Leave', bgColor: 'bg-blue-200' },
-  'Future': { color: 'bg-transparent  border-transparent', label: '-', fullLabel: '', bgColor: 'bg-transparent' }
+  'Future': { color: 'bg-transparent border-transparent', label: '-', fullLabel: '', bgColor: 'bg-transparent' }
 };
 
 const AttendanceDaily = () => {
@@ -186,8 +185,10 @@ const AttendanceDaily = () => {
   const [selectedDevice, setSelectedDevice] = useState(DEVICES[0]);
   const [selectedStore, setSelectedStore] = useState('ALL');
   const [attendanceData, setAttendanceData] = useState([]);
-  const [viewMode, setViewMode] = useState('calendar'); // 'calendar' or 'daily'
+  const [viewMode, setViewMode] = useState('daily');
   const [selectedDate, setSelectedDate] = useState(todayDate);
+  const [employeesData, setEmployeesData] = useState([]); // Store employees table data
+  const [showUnmatched, setShowUnmatched] = useState(false);
 
   const handleDateChange = (dateStr) => {
     if (!dateStr) return;
@@ -207,11 +208,12 @@ const AttendanceDaily = () => {
   const [error, setError] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
-  const [selectedEmployee, setSelectedEmployee] = useState(null); // For slide panel
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [editingCell, setEditingCell] = useState(null);
   const [tempStatus, setTempStatus] = useState('');
   const [tempInTime, setTempInTime] = useState('');
   const [tempOutTime, setTempOutTime] = useState('');
+  const [tempManualPunches, setTempManualPunches] = useState({ "1": "", "2": "", "3": "", "4": "", "5": "" });
   const [isSlidePanelOpen, setIsSlidePanelOpen] = useState(false);
 
   // Manual attendance marking state
@@ -222,15 +224,63 @@ const AttendanceDaily = () => {
   const [markInTime, setMarkInTime] = useState('');
   const [markOutTime, setMarkOutTime] = useState('');
 
+  // Fetch employees from employees table
+  const fetchEmployeesTable = async () => {
+    try {
+      let allEmployeesData = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('employees')
+          .select('*')
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allEmployeesData = [...allEmployeesData, ...data];
+          if (data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setEmployeesData(allEmployeesData);
+      return allEmployeesData;
+    } catch (error) {
+      console.error('Error fetching employees table:', error);
+      return [];
+    }
+  };
+
+  // Check if employee exists in employees table
+  const isEmployeeInTable = (employeeId) => {
+    return employeesData.some(emp => emp.id === employeeId || emp.employee_id === employeeId);
+  };
+
+  // Fetch roster data from shift_roster table (stubbed out)
+  const fetchRosterData = async (employeeId, date) => {
+    return new Map();
+  };
+
+  // Get roster for an employee on a specific date (stubbed out)
+  const getEmployeeRoster = (employeeId, date) => {
+    return null;
+  };
+
   const formatTime12h = (dateStr) => {
     if (!dateStr || dateStr === '-') return '-';
     try {
-      // If it's already a formatted string, return as is
       if (dateStr.includes('AM') || dateStr.includes('PM')) {
         return dateStr;
       }
-
-      // Convert UTC to IST and format
       return formatTimeIST(dateStr);
     } catch (e) {
       return dateStr;
@@ -240,10 +290,8 @@ const AttendanceDaily = () => {
   const formatDateDisplay = (dateStr) => {
     if (!dateStr) return '-';
     try {
-      // Convert UTC to IST for date display
       const istDate = convertUTCToIST(dateStr);
       if (istDate === '-' || typeof istDate === 'string') return dateStr;
-
       return istDate.toLocaleDateString('en-IN', {
         day: '2-digit',
         month: 'short',
@@ -309,7 +357,46 @@ const AttendanceDaily = () => {
     if (!aggregatedData || aggregatedData.length === 0) return [];
 
     try {
+      const dates = [...new Set(aggregatedData.map(item => item.Date))];
+
+      // Fetch existing logs for these dates to preserve manual_punches
+      const { data: existingLogs } = await supabase
+        .from('attendance_logs')
+        .in('attendance_date', dates);
+
       const rows = aggregatedData.map(item => {
+        const existing = existingLogs?.find(
+          r => r.employee_id === item.EmployeeID && r.attendance_date === item.Date
+        );
+
+        if (existing && existing.manual_punches && Object.values(existing.manual_punches).filter(Boolean).length > 0) {
+          return {
+            id: existing.id,
+            employee_id: existing.employee_id,
+            employee_name: existing.employee_name,
+            attendance_date: existing.attendance_date,
+            day: existing.day,
+            designation: existing.designation,
+            store_name: existing.store_name,
+            device_id: existing.device_id,
+            serial_number: existing.serial_number,
+            in_time: existing.in_time,
+            out_time: existing.out_time,
+            working_hour: existing.working_hour,
+            overtime: existing.overtime,
+            late_minute: existing.late_minute,
+            status: existing.status,
+            standard_lunch: existing.standard_lunch,
+            waste_time: existing.waste_time,
+            punch_log: existing.punch_log,
+            punch_log_status: existing.punch_log_status,
+            punch_miss: existing.punch_miss,
+            punch_miss_msg: existing.punch_miss_msg,
+            manual_punches: existing.manual_punches,
+            updated_at: existing.updated_at
+          };
+        }
+
         return {
           employee_id: item.EmployeeID,
           employee_name: item.EmployeeName,
@@ -370,7 +457,6 @@ const AttendanceDaily = () => {
       const batch = changedRows.slice(i, i + batchSize);
 
       await Promise.all(batch.map(async (item) => {
-        // Format times in IST for Google Sheet
         const formatTimeForSheet = (time) => {
           if (!time) return '-';
           return formatTimeIST(time);
@@ -425,34 +511,61 @@ const AttendanceDaily = () => {
       const startDateStr = getLocalDateString(startOfMonth);
       const endDateStr = getLocalDateString(endOfMonth);
 
-      // Always fetch today's records directly (separate query) to guarantee today's data
-      const [monthResult, todayResult] = await Promise.all([
-        supabase
+      // Paginated fetch for month data to bypass server-side 1000 row limits
+      let monthData = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
           .from('attendance_logs')
           .select('*')
           .gte('attendance_date', startDateStr)
           .lte('attendance_date', endDateStr)
-          .order('attendance_date', { ascending: true }),
-        supabase
-          .from('attendance_logs')
-          .select('*')
-          .eq('attendance_date', todayDate)
-          .order('employee_name', { ascending: true })
-      ]);
+          .order('attendance_date', { ascending: true })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
 
-      if (monthResult.error) throw monthResult.error;
-      if (todayResult.error) throw todayResult.error;
+        if (error) throw error;
 
-      const monthData = monthResult.data || [];
-      const todayData = todayResult.data || [];
+        if (data && data.length > 0) {
+          monthData = [...monthData, ...data];
+          if (data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
 
-      // Merge: start with monthly data, then overlay today's fresh records
+      // Fetch today's data
+      const { data: todayDataRaw, error: todayError } = await supabase
+        .from('attendance_logs')
+        .select('*')
+        .eq('attendance_date', todayDate)
+        .order('employee_name', { ascending: true });
+
+      if (todayError) throw todayError;
+      const todayData = todayDataRaw || [];
+
       const withoutToday = monthData.filter(r => r.attendance_date !== todayDate);
       const merged = [...withoutToday, ...todayData];
 
+      console.log('🔍 [fetchAttendanceFromDB] Debugging Info:', {
+        todayDate,
+        startDateStr,
+        endDateStr,
+        monthDataLength: monthData.length,
+        todayDataLength: todayData.length,
+        withoutTodayLength: withoutToday.length,
+        mergedLength: merged.length,
+        recordsOnJune28: merged.filter(r => r.attendance_date === '2026-06-28')
+      });
+
       setAttendanceData(merged);
 
-      // Extract unique employees from merged data
       const uniqueEmployees = [
         ...new Map(
           merged.map(item => [item.employee_id, {
@@ -466,6 +579,9 @@ const AttendanceDaily = () => {
 
       setEmployees(uniqueEmployees);
 
+      // Fetch roster data for the selected month
+      await fetchRosterData(null, startDateStr);
+
       console.log(`Loaded ${merged.length} records (month: ${withoutToday.length} + today: ${todayData.length})`);
     } catch (err) {
       console.error('Error fetching from Supabase:', err);
@@ -477,23 +593,40 @@ const AttendanceDaily = () => {
 
   const fetchAllEmployees = async () => {
     try {
-      const { data, error } = await supabase
-        .from('attendance_logs')
-        .select(`
-        employee_id,
-        employee_name,
-        designation,
-        store_name
-      `)
-        .not('employee_id', 'is', null)
-        .order('employee_name');
+      let allLogs = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (error) throw error;
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('attendance_logs')
+          .select(`
+            employee_id,
+            employee_name,
+            designation,
+            store_name
+          `)
+          .not('employee_id', 'is', null)
+          .range(page * pageSize, (page + 1) * pageSize - 1);
 
-      // Remove duplicate employees
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allLogs = [...allLogs, ...data];
+          if (data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
       const uniqueEmployees = [
         ...new Map(
-          (data || []).map(emp => [
+          allLogs.map(emp => [
             emp.employee_id,
             {
               employee_id: emp.employee_id,
@@ -605,7 +738,6 @@ const AttendanceDaily = () => {
               const res = await fetch(url);
               if (!res.ok) return [];
               const logs = await res.json();
-              console.log("logsssss", logs)
               return Array.isArray(logs) ? logs.map(l => ({ ...l, _DeviceName: device.name })) : [];
             } catch (e) {
               console.error(`Error fetching for ${device.name}:`, e);
@@ -701,7 +833,6 @@ const AttendanceDaily = () => {
         const displayDeviceId = dMap ? dMap.deviceId : '-';
         const displayAssignedSerial = dMap ? dMap.serialNo : serial;
 
-        // Calculate late minutes using IST
         const lateMins = calculateLateMinutes(inTime);
         const workHrs = punchMiss === 'Yes' ? '00:00:00' : calculateWorkHours(inTime, outTime);
 
@@ -800,7 +931,7 @@ const AttendanceDaily = () => {
         return {
           date: log.LogDate.split(' ')[0],
           day: dateObj ? dateObj.toLocaleDateString('en-US', { weekday: 'long' }) : '',
-          time: formatTimeIST(log.LogDate), // Convert to IST
+          time: formatTimeIST(log.LogDate),
           employeeId: displayCode,
           employeeName: displayName,
           storeName: displayStore,
@@ -836,8 +967,77 @@ const AttendanceDaily = () => {
     await syncLogsForRange(todayDate, todayDate, today);
   };
 
+  // Helper to compute metrics from manual punches
+  const calculateMetricsFromManualPunches = (punches, dateStr) => {
+    const time1 = punches["1"];
+    const time2 = punches["2"];
+    const time3 = punches["3"];
+    const time4 = punches["4"];
+    const time5 = punches["5"];
+
+    const activeTimes = [time1, time2, time3, time4, time5].filter(Boolean);
+
+    if (activeTimes.length === 0) {
+      return {
+        in_time: null,
+        out_time: null,
+        punch_log: "-",
+        punch_log_status: "Bahar",
+        punch_miss: "No",
+        punch_miss_msg: "",
+        working_hour: "00:00:00",
+        late_minute: 0
+      };
+    }
+
+    const formatDateTime = (timeVal) => {
+      return `${dateStr}T${timeVal}:00`;
+    };
+
+    const in_time = formatDateTime(activeTimes[0]);
+    const out_time = activeTimes.length > 1 ? formatDateTime(activeTimes[activeTimes.length - 1]) : null;
+
+    const formatTime12h = (timeVal) => {
+      try {
+        const [hStr, mStr] = timeVal.split(":");
+        const h = parseInt(hStr, 10);
+        const m = parseInt(mStr, 10);
+        const ampm = h >= 12 ? "PM" : "AM";
+        const displayH = h % 12 === 0 ? 12 : h % 12;
+        const displayM = m.toString().padStart(2, "0");
+        return `${displayH}:${displayM} ${ampm}`;
+      } catch (e) {
+        return timeVal;
+      }
+    };
+
+    const punch_log = activeTimes.map(formatTime12h).join(" | ");
+    const late_minute = calculateLateMinutes(in_time, dateStr);
+    const working_hour = out_time ? calculateWorkHours(in_time, out_time, dateStr) : "00:00:00";
+
+    const punch_miss = activeTimes.length === 1 ? "Yes" : "No";
+    let punch_miss_msg = "";
+    if (activeTimes.length === 1) {
+      const hours = parseInt(activeTimes[0].split(":")[0], 10);
+      punch_miss_msg = hours >= 15 ? "Morning Punch Miss" : "Evening Punch Miss";
+    }
+
+    const punch_log_status = activeTimes.length % 2 === 1 ? "Andar" : "Bahar";
+
+    return {
+      in_time,
+      out_time,
+      punch_log,
+      punch_log_status,
+      punch_miss,
+      punch_miss_msg,
+      working_hour,
+      late_minute
+    };
+  };
+
   // Update attendance status
-  const updateAttendanceStatus = async (employeeId, date, newStatus, inTime, outTime) => {
+  const updateAttendanceStatus = async (employeeId, date, newStatus, inTime, outTime, manualPunches) => {
     try {
       const existingRecord = attendanceData.find(
         a => a.employee_id === employeeId && a.attendance_date === date
@@ -848,18 +1048,30 @@ const AttendanceDaily = () => {
         updated_at: new Date()
       };
 
-      // Store times in UTC
-      if (inTime !== undefined) {
-        updateData.in_time = inTime ? formatToISTISOString(inTime) : null;
-      }
-      if (outTime !== undefined) {
-        updateData.out_time = outTime ? formatToISTISOString(outTime) : null;
-      }
+      if (manualPunches) {
+        const metrics = calculateMetricsFromManualPunches(manualPunches, date);
+        updateData.manual_punches = manualPunches;
+        updateData.in_time = metrics.in_time;
+        updateData.out_time = metrics.out_time;
+        updateData.punch_log = metrics.punch_log;
+        updateData.punch_log_status = metrics.punch_log_status;
+        updateData.punch_miss = metrics.punch_miss;
+        updateData.punch_miss_msg = metrics.punch_miss_msg;
+        updateData.working_hour = metrics.working_hour;
+        updateData.late_minute = metrics.late_minute;
+      } else {
+        if (inTime !== undefined) {
+          updateData.in_time = inTime ? formatToISTISOString(inTime) : null;
+        }
+        if (outTime !== undefined) {
+          updateData.out_time = outTime ? formatToISTISOString(outTime) : null;
+        }
 
-      if (inTime || outTime) {
-        if (inTime && outTime && inTime !== '-' && outTime !== '-') {
-          updateData.working_hour = calculateWorkHours(inTime, outTime, date);
-          updateData.late_minute = calculateLateMinutes(inTime, date);
+        if (inTime || outTime) {
+          if (inTime && outTime && inTime !== '-' && outTime !== '-') {
+            updateData.working_hour = calculateWorkHours(inTime, outTime, date);
+            updateData.late_minute = calculateLateMinutes(inTime, date);
+          }
         }
       }
 
@@ -923,10 +1135,12 @@ const AttendanceDaily = () => {
 
   // Handle employee selection for slide panel
   const handleEmployeeSelect = (employee, date, status, inTime, outTime) => {
-    // Get full attendance record
     const fullRecord = attendanceData.find(
       a => a.employee_id === employee.id && a.attendance_date === date
     );
+
+    // Get roster data for this employee on this date
+    const roster = getEmployeeRoster(employee.id, date);
 
     setSelectedEmployee({
       ...employee,
@@ -936,7 +1150,8 @@ const AttendanceDaily = () => {
         in_time: inTime,
         out_time: outTime,
         ...fullRecord
-      }
+      },
+      roster: roster
     });
 
     setTempStatus(status);
@@ -968,6 +1183,17 @@ const AttendanceDaily = () => {
 
     setTempInTime(formatInputVal(inTime));
     setTempOutTime(formatInputVal(outTime));
+
+    // Populate manual punches state
+    const punchesObj = fullRecord?.manual_punches || {};
+    setTempManualPunches({
+      "1": punchesObj["1"] || "",
+      "2": punchesObj["2"] || "",
+      "3": punchesObj["3"] || "",
+      "4": punchesObj["4"] || "",
+      "5": punchesObj["5"] || ""
+    });
+
     setIsSlidePanelOpen(true);
   };
 
@@ -979,7 +1205,8 @@ const AttendanceDaily = () => {
         selectedEmployee.date,
         tempStatus,
         tempInTime,
-        tempOutTime
+        tempOutTime,
+        tempManualPunches
       );
     }
   };
@@ -1010,10 +1237,14 @@ const AttendanceDaily = () => {
     const record = attendanceData.find(
       a => a.employee_id === employeeId && a.attendance_date === date
     );
+    if (date === '2026-06-28') {
+      console.log(`🔎 [getAttendanceForDate] Lookup for ${employeeId} on ${date}:`, {
+        foundRecord: record,
+        totalAttendanceData: attendanceData.length
+      });
+    }
     if (record) {
-      // Check if the in_time is late in IST
       const isLate = record.in_time ? isLatePunch(record.in_time) : false;
-      // If the record is 'Present' but late, override status to 'Late'
       if (isLate && (record.status === 'Present' || !record.status)) {
         return { ...record, status: 'Late' };
       }
@@ -1050,11 +1281,23 @@ const AttendanceDaily = () => {
     const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.id?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStore = selectedStore === 'ALL' || emp.store_name === selectedStore;
-    return matchesSearch && matchesStore;
+    const isMatched = isEmployeeInTable(emp.id);
+    const matchesFilterMode = showUnmatched ? !isMatched : isMatched;
+    return matchesSearch && matchesStore && matchesFilterMode;
   });
 
   const days = getDaysInMonth(currentMonth);
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  useEffect(() => {
+    fetchEmployeesTable(); // Fetch employees table on component mount
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === 'daily') {
+      fetchRosterData(null, selectedDate);
+    }
+  }, [selectedDate, viewMode]);
 
   useEffect(() => {
     fetchAttendanceFromDB();
@@ -1067,6 +1310,7 @@ const AttendanceDaily = () => {
     if (viewMode === 'daily') {
       filteredEmployees.forEach(employee => {
         const attendance = getAttendanceForDate(employee.id, selectedDate);
+        const roster = getEmployeeRoster(employee.id, selectedDate);
         const dateObj = new Date(selectedDate);
         exportData.push({
           'Employee ID': employee.id,
@@ -1082,7 +1326,10 @@ const AttendanceDaily = () => {
           'Late Minutes': attendance.late_minute || 0,
           'Standard Lunch': attendance.standard_lunch || '-',
           'Waste Time': attendance.waste_time || '-',
-          'Punch Log': attendance.punch_log || '-'
+          'Punch Log': attendance.punch_log || '-',
+          'Roster Shift': roster?.shift_type || 'Not Assigned',
+          'Roster Start Time': roster?.start_time || '-',
+          'Roster End Time': roster?.end_time || '-'
         });
       });
       const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -1093,6 +1340,7 @@ const AttendanceDaily = () => {
       filteredEmployees.forEach(employee => {
         days.forEach(day => {
           const attendance = getAttendanceForDate(employee.id, day.fullDate);
+          const roster = getEmployeeRoster(employee.id, day.fullDate);
           exportData.push({
             'Employee ID': employee.id,
             'Employee Name': employee.name,
@@ -1104,7 +1352,10 @@ const AttendanceDaily = () => {
             'IN Time': formatTimeIST(attendance.in_time),
             'OUT Time': formatTimeIST(attendance.out_time),
             'Working Hours': attendance.working_hour || '-',
-            'Late Minutes': attendance.late_minute || 0
+            'Late Minutes': attendance.late_minute || 0,
+            'Roster Shift': roster?.shift_type || 'Not Assigned',
+            'Roster Start Time': roster?.start_time || '-',
+            'Roster End Time': roster?.end_time || '-'
           });
         });
       });
@@ -1131,23 +1382,6 @@ const AttendanceDaily = () => {
           </p>
         </div>
         <div className="flex gap-2">
-
-          <button
-            onClick={syncTodayLogs}
-            disabled={loading || syncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw size={12} className={loading || syncing ? 'animate-spin' : ''} />
-            Sync Today Logs
-          </button>
-          <button
-            onClick={syncDeviceLogs}
-            disabled={loading || syncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw size={12} className={loading || syncing ? 'animate-spin' : ''} />
-            Sync Logs
-          </button>
           {syncing && (
             <div className="flex items-center gap-1.5 px-2 py-1.5 bg-indigo-50 border border-indigo-200 rounded-md">
               <Loader2 size={10} className="text-indigo-600 animate-spin" />
@@ -1175,6 +1409,16 @@ const AttendanceDaily = () => {
         <div className="flex items-center gap-2">
           <div className="flex bg-gray-100 p-0.5 rounded-md">
             <button
+              onClick={() => setViewMode('daily')}
+              className={`flex items-center gap-1.5 px-4 py-1 text-xs font-medium rounded transition-all ${viewMode === 'daily'
+                ? 'bg-white text-indigo-600 '
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
+            >
+              <Clock size={12} />
+              Daily
+            </button>
+            <button
               onClick={() => setViewMode('calendar')}
               className={`flex items-center gap-1.5 px-3 h-10 py-1 text-xs font-medium rounded transition-all ${viewMode === 'calendar'
                 ? 'bg-white text-indigo-600 '
@@ -1182,26 +1426,27 @@ const AttendanceDaily = () => {
                 }`}
             >
               <Calendar size={12} />
-              Calendar
-            </button>
-            <button
-              onClick={() => setViewMode('daily')}
-              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-all ${viewMode === 'daily'
-                ? 'bg-white text-indigo-600 '
-                : 'text-gray-600 hover:text-gray-900'
-                }`}
-            >
-              <Clock size={12} />
-              Daily List
+              Monthly
             </button>
           </div>
 
           <button
             onClick={() => setIsMarkModalOpen(true)}
-            className="flex h-10 items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white  font-medium text-xs transition-colors shadow-sm"
+            className="flex h-10 items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs transition-colors shadow-sm"
           >
             <Plus size={12} />
             Mark Attendance
+          </button>
+
+          <button
+            onClick={() => setShowUnmatched(prev => !prev)}
+            className={`flex h-10 items-center gap-1.5 px-3 py-1.5 font-medium text-xs transition-colors shadow-sm border rounded-md active:scale-95 transition-all ${showUnmatched
+              ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
+              : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+              }`}
+          >
+            <Filter size={12} />
+            {showUnmatched ? 'Show Verified Employees' : 'Show Unmatched Employees'}
           </button>
         </div>
 
@@ -1219,7 +1464,7 @@ const AttendanceDaily = () => {
       </div>
 
       {/* Status Legend - Compact */}
-      <div className="bg-white rounded-md border border-gray-200 p-2 mb-3">
+      <div className="bg-gray-100 rounded-md p-2 mb-3">
         <div className="flex flex-wrap gap-3">
           <span className="text-[11px] font-medium text-gray-700">Status:</span>
           {Object.entries(STATUS_CONFIG).map(([key, config]) => (
@@ -1245,7 +1490,7 @@ const AttendanceDaily = () => {
               <input
                 type="text"
                 placeholder="Search..."
-                className="w-full pl-7 pr-2 py-1 border border-gray-200  focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                className="w-full pl-7 pr-2 py-1 border border-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -1337,13 +1582,20 @@ const AttendanceDaily = () => {
                 ) : filteredEmployees.length > 0 ? (
                   filteredEmployees.map((employee) => {
                     let presentCount = 0, lateCount = 0, absentCount = 0, halfDayCount = 0;
+                    const isInEmployeesTable = isEmployeeInTable(employee.id);
 
                     return (
-                      <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="sticky left-0 bg-white px-2 py-1.5 border-r z-10">
+                      <tr
+                        key={employee.id}
+                        className={`hover:bg-gray-50 transition-colors ${isInEmployeesTable ? 'bg-blue-50 hover:bg-blue-100' : ''}`}
+                      >
+                        <td className={`sticky left-0 px-2 py-1.5 border-r z-10 ${isInEmployeesTable ? 'bg-blue-50' : 'bg-white'}`}>
                           <div>
                             <p className="text-xs font-medium text-gray-900">{employee.name}</p>
                             <p className="text-[9px] text-gray-500">{employee.id}</p>
+                            {isInEmployeesTable && (
+                              <span className="text-[8px] text-blue-600 font-medium">✓ Verified</span>
+                            )}
                           </div>
                         </td>
                         {days.map((day, idx) => {
@@ -1359,11 +1611,16 @@ const AttendanceDaily = () => {
                           return (
                             <td
                               key={idx}
-                              className={`px-0.5 py-1 text-center cursor-pointer transition-all hover:opacity-80 ${day.isWeekend ? 'bg-gray-50' : ''}`}
+                              className={`px-0.5 py-1 text-center cursor-pointer transition-all hover:opacity-80 relative ${day.isWeekend ? 'bg-gray-50' : ''}`}
                               onClick={() => handleEmployeeSelect(employee, day.fullDate, status, attendance.in_time, attendance.out_time)}
                             >
-                              <div className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${config.color} font-medium text-[10px] transition-transform hover:scale-105`}>
-                                {config.label}
+                              <div className="relative inline-block">
+                                <div className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${config.color} font-medium text-[10px] transition-transform hover:scale-105`}>
+                                  {config.label}
+                                </div>
+                                {attendance?.manual_punches && Object.values(attendance.manual_punches).filter(Boolean).length > 0 && (
+                                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-purple-500 rounded-full border border-white" title="Manual punch log" />
+                                )}
                               </div>
                               {attendance.late_minute > 0 && (
                                 <div className="text-[8px] text-gray-400 mt-0.5">
@@ -1396,7 +1653,7 @@ const AttendanceDaily = () => {
           <div className="bg-white rounded-md border border-gray-200 overflow-hidden shadow-sm">
             <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)]">
               <table className="w-full text-xs relative border-collapse">
-                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
+                <thead className=" border-b border-gray-200 sticky top-0 z-10 shadow-sm">
                   <tr>
                     <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[40px] z-10">#</th>
                     <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[10vw] z-10">Employee</th>
@@ -1404,6 +1661,7 @@ const AttendanceDaily = () => {
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[80px] z-10">Status</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">In Time (IST)</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">Out Time (IST)</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[180px] z-10">Punch Logs</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[70px] z-10">Hours</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[60px] z-10">Late</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[50px] z-10">Action</th>
@@ -1412,7 +1670,7 @@ const AttendanceDaily = () => {
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={9} className="text-center py-6">
+                      <td colSpan={10} className="text-center py-6">
                         <div className="flex items-center justify-center gap-1 text-gray-500 text-xs">
                           <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
                           Loading...
@@ -1421,7 +1679,7 @@ const AttendanceDaily = () => {
                     </tr>
                   ) : error ? (
                     <tr>
-                      <td colSpan={9} className="text-center py-6">
+                      <td colSpan={10} className="text-center py-6">
                         <p className="text-red-600 text-xs mb-2">{error}</p>
                         <button onClick={syncDeviceLogs} className="px-3 py-1 bg-indigo-600 text-white rounded text-xs">Retry</button>
                       </td>
@@ -1431,18 +1689,30 @@ const AttendanceDaily = () => {
                       const attendance = getAttendanceForDate(employee.id, selectedDate);
                       let status = attendance.status || 'Absent';
                       const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
+                      const isInEmployeesTable = isEmployeeInTable(employee.id);
 
                       return (
-                        <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
+                        <tr
+                          key={employee.id}
+                          className={`hover:bg-gray-50 transition-colors ${isInEmployeesTable ? 'bg-blue-50 hover:bg-blue-100' : ''}`}
+                        >
                           <td className="px-2 py-1.5 text-[10px] text-gray-500 font-medium">{idx + 1}</td>
                           <td className="px-2 py-1.5">
                             <div className="flex items-center gap-1.5">
-                              <div className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold ${isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
                                 {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
                               </div>
                               <div>
                                 <p className="text-xs font-medium text-gray-900">{employee.name}</p>
                                 <p className="text-[9px] text-gray-500">{employee.id}</p>
+                                {isInEmployeesTable && (
+                                  <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
+                                )}
+                                {attendance?.manual_punches && Object.values(attendance.manual_punches).filter(Boolean).length > 0 && (
+                                  <span className="inline-block mt-0.5 px-1 py-0.5 bg-purple-50 text-purple-600 rounded text-[7px] font-bold border border-purple-100">
+                                    ✍ Manual ({Object.values(attendance.manual_punches).filter(Boolean).length})
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -1457,6 +1727,9 @@ const AttendanceDaily = () => {
                           </td>
                           <td className="px-2 py-1.5 text-center text-[10px] font-mono">
                             {attendance.out_time ? formatTimeIST(attendance.out_time) : '-'}
+                          </td>
+                          <td className="px-2 py-1.5 text-center text-[10px] font-mono text-gray-500 font-medium max-w-[220px] truncate" title={attendance.punch_log || '-'}>
+                            {attendance.punch_log || '-'}
                           </td>
                           <td className="px-2 py-1.5 text-center text-[10px] font-semibold">{attendance.working_hour || '-'}</td>
                           <td className="px-2 py-1.5 text-center text-[10px]">
@@ -1477,7 +1750,7 @@ const AttendanceDaily = () => {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={9} className="text-center py-8">
+                      <td colSpan={10} className="text-center py-8">
                         <div className="flex flex-col items-center justify-center text-gray-400">
                           <Users size={32} className="mb-2" />
                           <p className="text-xs font-medium">No employees found</p>
@@ -1633,6 +1906,77 @@ const AttendanceDaily = () => {
                         />
                       </div>
 
+                      {/* Manual Attendance Logs */}
+                      <div className="md:col-span-2 lg:col-span-3 border-t border-gray-100 pt-4 mt-2">
+                        <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">
+                          Manual Punch Logs (HH:MM)
+                        </h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          {["1", "2", "3", "4"].map((num) => (
+                            <div key={num} className="bg-slate-50 p-2.5 rounded border border-gray-200">
+                              <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase">
+                                Punch #{num}
+                              </label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="time"
+                                  value={tempManualPunches[num] || ""}
+                                  onChange={(e) => {
+                                    setTempManualPunches(prev => {
+                                      const updated = { ...prev, [num]: e.target.value };
+                                      const activeVals = ["1", "2", "3", "4", "5"].map(n => updated[n]).filter(Boolean);
+                                      if (activeVals.length > 0) {
+                                        setTempInTime(`${selectedEmployee.date}T${activeVals[0]}`);
+                                        if (activeVals.length > 1) {
+                                          setTempOutTime(`${selectedEmployee.date}T${activeVals[activeVals.length - 1]}`);
+                                        } else {
+                                          setTempOutTime('');
+                                        }
+                                      } else {
+                                        setTempInTime('');
+                                        setTempOutTime('');
+                                      }
+                                      return updated;
+                                    });
+                                  }}
+                                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                />
+                                {tempManualPunches[num] && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setTempManualPunches(prev => {
+                                        const updated = { ...prev, [num]: "" };
+                                        const activeVals = ["1", "2", "3", "4", "5"].map(n => updated[n]).filter(Boolean);
+                                        if (activeVals.length > 0) {
+                                          setTempInTime(`${selectedEmployee.date}T${activeVals[0]}`);
+                                          if (activeVals.length > 1) {
+                                            setTempOutTime(`${selectedEmployee.date}T${activeVals[activeVals.length - 1]}`);
+                                          } else {
+                                            setTempOutTime('');
+                                          }
+                                        } else {
+                                          setTempInTime('');
+                                          setTempOutTime('');
+                                        }
+                                        return updated;
+                                      });
+                                    }}
+                                    className="text-red-500 hover:text-red-700 p-0.5 rounded hover:bg-gray-200 transition-colors"
+                                    title="Delete Punch"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-2">
+                          💡 Tip: The first punch will be used as the Clock In time, and the last punch will be used as the Clock Out time.
+                        </p>
+                      </div>
+
                       {/* Late (Yes/No radio) */}
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Late</label>
@@ -1715,6 +2059,8 @@ const AttendanceDaily = () => {
                     </div>
                   </div>
 
+                  {/* Roster Information Section removed since shift roster is not implemented yet */}
+
                   {/* Punch Details and Raw Logs */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-100">
                     <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
@@ -1778,7 +2124,7 @@ const AttendanceDaily = () => {
                 </button>
                 <button
                   onClick={handleSaveFromSlidePanel}
-                  className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded font-semibold flex items-center gap-1.5 transition-colors shadow-sm animate-pulse-subtle"
+                  className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
                 >
                   <CheckCircle size={16} />
                   Save
