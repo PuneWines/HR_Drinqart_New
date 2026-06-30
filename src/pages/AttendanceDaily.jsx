@@ -89,6 +89,32 @@ const formatTimeIST = (utcDateStr) => {
   }
 };
 
+// Convert 12h time string (e.g., '10:00 AM') to 24h format (e.g., '10:00')
+const convert12hTo24h = (time12h) => {
+  if (!time12h || time12h === '-') return "";
+  try {
+    const cleanStr = time12h.trim().replace(/\u202f|\u00a0/g, ' ').replace(/\s+/g, ' ');
+    const parts = cleanStr.split(' ');
+    if (parts.length < 2) return "";
+    const timeParts = parts[0].split(':');
+    let hour = parseInt(timeParts[0], 10);
+    const minute = parseInt(timeParts[1], 10);
+    const ampm = parts[1].toUpperCase();
+
+    if (ampm === 'PM' && hour < 12) {
+      hour += 12;
+    } else if (ampm === 'AM' && hour === 12) {
+      hour = 0;
+    }
+
+    const hh = hour.toString().padStart(2, '0');
+    const mm = minute.toString().padStart(2, '0');
+    return `${hh}:${mm}`;
+  } catch (e) {
+    return "";
+  }
+};
+
 // Format full date-time in IST
 const formatDateTimeIST = (utcDateStr) => {
   if (!utcDateStr || utcDateStr === '-') return '-';
@@ -214,6 +240,7 @@ const AttendanceDaily = () => {
   const [tempInTime, setTempInTime] = useState('');
   const [tempOutTime, setTempOutTime] = useState('');
   const [tempManualPunches, setTempManualPunches] = useState({ "1": "", "2": "", "3": "", "4": "", "5": "" });
+  const [newPunchTime, setNewPunchTime] = useState('');
   const [isSlidePanelOpen, setIsSlidePanelOpen] = useState(false);
 
   // Manual attendance marking state
@@ -362,6 +389,7 @@ const AttendanceDaily = () => {
       // Fetch existing logs for these dates to preserve manual_punches
       const { data: existingLogs } = await supabase
         .from('attendance_logs')
+        .select('*')
         .in('attendance_date', dates);
 
       const rows = aggregatedData.map(item => {
@@ -369,9 +397,8 @@ const AttendanceDaily = () => {
           r => r.employee_id === item.EmployeeID && r.attendance_date === item.Date
         );
 
-        if (existing && existing.manual_punches && Object.values(existing.manual_punches).filter(Boolean).length > 0) {
+        if (existing && existing.manual_punches && (existing.manual_punches.is_manual === true || existing.manual_punches.manual_override === true)) {
           return {
-            id: existing.id,
             employee_id: existing.employee_id,
             employee_name: existing.employee_name,
             attendance_date: existing.attendance_date,
@@ -388,13 +415,33 @@ const AttendanceDaily = () => {
             status: existing.status,
             standard_lunch: existing.standard_lunch,
             waste_time: existing.waste_time,
-            punch_log: existing.punch_log,
-            punch_log_status: existing.punch_log_status,
+            punch_log: item.PunchLog, // update to latest API logs
+            punch_log_status: item.PunchLogStatus, // update to latest API logs
             punch_miss: existing.punch_miss,
             punch_miss_msg: existing.punch_miss_msg,
             manual_punches: existing.manual_punches,
-            updated_at: existing.updated_at
+            updated_at: new Date()
           };
+        }
+
+        const apiManualPunches = {
+          "1": "",
+          "2": "",
+          "3": "",
+          "4": "",
+          "5": ""
+        };
+        if (item.RawLogs) {
+          item.RawLogs.forEach((logStr, idx) => {
+            if (idx < 5) {
+              try {
+                const timePart = logStr.split(' ')[1] || '';
+                apiManualPunches[(idx + 1).toString()] = timePart.substring(0, 5);
+              } catch (e) {
+                // ignore
+              }
+            }
+          });
         }
 
         return {
@@ -418,6 +465,7 @@ const AttendanceDaily = () => {
           punch_log_status: item.PunchLogStatus,
           punch_miss: item.PunchMiss,
           punch_miss_msg: item.PunchMissMsg,
+          manual_punches: apiManualPunches,
           updated_at: new Date()
         };
       });
@@ -668,12 +716,34 @@ const AttendanceDaily = () => {
     }
 
     try {
+      let manualPunches = null;
+      if (markStatus !== 'Absent') {
+        const getHM = (timeStr) => {
+          if (!timeStr) return '';
+          const parts = timeStr.split('T');
+          const timePart = parts[1] || parts[0];
+          return timePart.substring(0, 5); // Ensure HH:MM format
+        };
+        manualPunches = {
+          "1": getHM(markInTime),
+          "2": getHM(markOutTime),
+          "3": "",
+          "4": "",
+          "5": ""
+        };
+      } else {
+        manualPunches = {
+          "absent": true
+        };
+      }
+
       await updateAttendanceStatus(
         markEmployeeId,
         selectedDate,
         markStatus,
         markStatus === 'Absent' ? null : markInTime,
-        markStatus === 'Absent' ? null : markOutTime
+        markStatus === 'Absent' ? null : markOutTime,
+        manualPunches
       );
       setIsMarkModalOpen(false);
     } catch (err) {
@@ -897,7 +967,8 @@ const AttendanceDaily = () => {
           Overtime: '0h 0m',
           LateMinute: lateMins,
           PunchMiss: punchMiss,
-          PunchMissMsg: punchMissMsg
+          PunchMissMsg: punchMissMsg,
+          RawLogs: logs
         };
       });
 
@@ -1053,12 +1124,14 @@ const AttendanceDaily = () => {
         updateData.manual_punches = manualPunches;
         updateData.in_time = metrics.in_time;
         updateData.out_time = metrics.out_time;
-        updateData.punch_log = metrics.punch_log;
-        updateData.punch_log_status = metrics.punch_log_status;
         updateData.punch_miss = metrics.punch_miss;
         updateData.punch_miss_msg = metrics.punch_miss_msg;
         updateData.working_hour = metrics.working_hour;
         updateData.late_minute = metrics.late_minute;
+        if (!existingRecord) {
+          updateData.punch_log = "-";
+          updateData.punch_log_status = "Bahar";
+        }
       } else {
         if (inTime !== undefined) {
           updateData.in_time = inTime ? formatToISTISOString(inTime) : null;
@@ -1181,11 +1254,24 @@ const AttendanceDaily = () => {
       }
     };
 
-    setTempInTime(formatInputVal(inTime));
-    setTempOutTime(formatInputVal(outTime));
+    setTempInTime(formatInputVal(inTime) || `${date}T10:00`);
+    setTempOutTime(formatInputVal(outTime) || `${date}T18:00`);
 
     // Populate manual punches state
-    const punchesObj = fullRecord?.manual_punches || {};
+    let punchesObj = fullRecord?.manual_punches || {};
+    const activePunches = Object.values(punchesObj).filter(Boolean);
+
+    // If no manual punches exist, check if we can populate from punch_log
+    if (activePunches.length === 0 && fullRecord?.punch_log && fullRecord.punch_log !== '-') {
+      const parsedPunches = fullRecord.punch_log.split('|').map(p => convert12hTo24h(p)).filter(Boolean);
+      punchesObj = {};
+      parsedPunches.forEach((p, idx) => {
+        if (idx < 5) {
+          punchesObj[(idx + 1).toString()] = p;
+        }
+      });
+    }
+
     setTempManualPunches({
       "1": punchesObj["1"] || "",
       "2": punchesObj["2"] || "",
@@ -1194,7 +1280,70 @@ const AttendanceDaily = () => {
       "5": punchesObj["5"] || ""
     });
 
+    setNewPunchTime('');
     setIsSlidePanelOpen(true);
+  };
+
+  // Add a manual punch, sort it chronologically, and sync in/out times
+  const handleAddPunch = () => {
+    if (!newPunchTime) return;
+
+    const existing = Object.values(tempManualPunches).filter(Boolean);
+    if (existing.includes(newPunchTime)) {
+      alert('This punch time already exists!');
+      return;
+    }
+
+    const updatedList = [...existing, newPunchTime].sort();
+    const newPunchesObj = {
+      "1": updatedList[0] || "",
+      "2": updatedList[1] || "",
+      "3": updatedList[2] || "",
+      "4": updatedList[3] || "",
+      "5": updatedList[4] || ""
+    };
+
+    setTempManualPunches(newPunchesObj);
+    setNewPunchTime('');
+
+    if (updatedList.length > 0) {
+      setTempInTime(`${selectedEmployee.date}T${updatedList[0]}`);
+      if (updatedList.length > 1) {
+        setTempOutTime(`${selectedEmployee.date}T${updatedList[updatedList.length - 1]}`);
+      } else {
+        setTempOutTime('');
+      }
+    }
+  };
+
+  // Remove a manual punch, re-sort remaining chronologically, and sync in/out times
+  const handleDeletePunch = (timeToDelete) => {
+    const remainingList = Object.values(tempManualPunches)
+      .filter(Boolean)
+      .filter(t => t !== timeToDelete)
+      .sort();
+
+    const newPunchesObj = {
+      "1": remainingList[0] || "",
+      "2": remainingList[1] || "",
+      "3": remainingList[2] || "",
+      "4": remainingList[3] || "",
+      "5": remainingList[4] || ""
+    };
+
+    setTempManualPunches(newPunchesObj);
+
+    if (remainingList.length > 0) {
+      setTempInTime(`${selectedEmployee.date}T${remainingList[0]}`);
+      if (remainingList.length > 1) {
+        setTempOutTime(`${selectedEmployee.date}T${remainingList[remainingList.length - 1]}`);
+      } else {
+        setTempOutTime('');
+      }
+    } else {
+      setTempInTime('');
+      setTempOutTime('');
+    }
   };
 
   // Handle save from slide panel
@@ -1206,7 +1355,10 @@ const AttendanceDaily = () => {
         tempStatus,
         tempInTime,
         tempOutTime,
-        tempManualPunches
+        {
+          ...tempManualPunches,
+          is_manual: true
+        }
       );
     }
   };
@@ -1277,14 +1429,52 @@ const AttendanceDaily = () => {
   const stores = [...new Set(employees.map(emp => emp.store_name).filter(Boolean))].sort();
 
   // Filter employees
-  const filteredEmployees = employees.filter(emp => {
-    const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.id?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStore = selectedStore === 'ALL' || emp.store_name === selectedStore;
-    const isMatched = isEmployeeInTable(emp.id);
-    const matchesFilterMode = showUnmatched ? !isMatched : isMatched;
-    return matchesSearch && matchesStore && matchesFilterMode;
-  });
+  const filteredEmployees = (() => {
+    // 1. Get employees with logs (matched or unmatched)
+    const baseList = employees.filter(emp => {
+      const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        emp.id?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStore = selectedStore === 'ALL' || emp.store_name === selectedStore;
+      const isMatched = isEmployeeInTable(emp.id);
+      const matchesFilterMode = showUnmatched ? !isMatched : isMatched;
+      return matchesSearch && matchesStore && matchesFilterMode;
+    });
+
+    // 2. If showing verified (showUnmatched is false), append remaining employees from employees table
+    if (!showUnmatched) {
+      const hasAttendance = (empId) => {
+        return employees.some(e => e.id === empId);
+      };
+
+      const remaining = employeesData
+        .filter(emp => {
+          // Exclude if already in employees list (meaning they have logs)
+          if (hasAttendance(emp.employee_id)) return false;
+          
+          // Apply search term and store filters
+          const name = emp.name_as_per_aadhar || '';
+          const id = emp.employee_id || '';
+          const store = emp.joining_place || '';
+          
+          const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            id.toLowerCase().includes(searchTerm.toLowerCase());
+          const matchesStore = selectedStore === 'ALL' || store === selectedStore;
+          
+          return matchesSearch && matchesStore;
+        })
+        .map(emp => ({
+          id: emp.employee_id,
+          name: emp.name_as_per_aadhar,
+          designation: emp.designation,
+          store_name: emp.joining_place,
+          isRemaining: true
+        }));
+
+      return [...baseList, ...remaining];
+    }
+
+    return baseList;
+  })();
 
   const days = getDaysInMonth(currentMonth);
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -1302,6 +1492,21 @@ const AttendanceDaily = () => {
   useEffect(() => {
     fetchAttendanceFromDB();
   }, [currentMonth]);
+
+  // Auto-sync logs from biometric API to Supabase (saving to manual_punches) on load / date change
+  useEffect(() => {
+    if (viewMode === 'daily' && selectedDate) {
+      const autoSync = async () => {
+        try {
+          console.log(`[Auto Sync] Syncing logs for ${selectedDate}...`);
+          await syncLogsForRange(selectedDate, selectedDate);
+        } catch (err) {
+          console.error('[Auto Sync] Failed:', err);
+        }
+      };
+      autoSync();
+    }
+  }, [selectedDate, viewMode]);
 
   // Download Excel
   const downloadExcel = () => {
@@ -1587,9 +1792,9 @@ const AttendanceDaily = () => {
                     return (
                       <tr
                         key={employee.id}
-                        className={`hover:bg-gray-50 transition-colors ${isInEmployeesTable ? 'bg-blue-50 hover:bg-blue-100' : ''}`}
+                        className={`transition-colors ${employee.isRemaining ? 'bg-blue-100 hover:bg-blue-200' : isInEmployeesTable ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 bg-white'}`}
                       >
-                        <td className={`sticky left-0 px-2 py-1.5 border-r z-10 ${isInEmployeesTable ? 'bg-blue-50' : 'bg-white'}`}>
+                        <td className={`sticky left-0 px-2 py-1.5 border-r z-10 ${employee.isRemaining ? 'bg-blue-100' : isInEmployeesTable ? 'bg-blue-50' : 'bg-white'}`}>
                           <div>
                             <p className="text-xs font-medium text-gray-900">{employee.name}</p>
                             <p className="text-[9px] text-gray-500">{employee.id}</p>
@@ -1691,15 +1896,39 @@ const AttendanceDaily = () => {
                       const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
                       const isInEmployeesTable = isEmployeeInTable(employee.id);
 
+                      const isManual = attendance?.manual_punches && (attendance.manual_punches.is_manual === true || attendance.manual_punches.manual_override === true);
+                      let punchLogText = attendance.punch_log || '-';
+                      if (isManual) {
+                        const times = ["1", "2", "3", "4", "5"]
+                          .map(key => attendance.manual_punches[key])
+                          .filter(Boolean);
+                        if (times.length > 0) {
+                          const formatTime12h = (timeVal) => {
+                            try {
+                              const [hStr, mStr] = timeVal.split(":");
+                              const h = parseInt(hStr, 10);
+                              const m = parseInt(mStr, 10);
+                              const ampm = h >= 12 ? "PM" : "AM";
+                              const displayH = h % 12 === 0 ? 12 : h % 12;
+                              const displayM = m.toString().padStart(2, "0");
+                              return `${displayH}:${displayM} ${ampm}`;
+                            } catch (e) {
+                              return timeVal;
+                            }
+                          };
+                          punchLogText = times.map(formatTime12h).join(' | ');
+                        }
+                      }
+
                       return (
                         <tr
                           key={employee.id}
-                          className={`hover:bg-gray-50 transition-colors ${isInEmployeesTable ? 'bg-blue-50 hover:bg-blue-100' : ''}`}
+                          className={`transition-colors ${employee.isRemaining ? 'bg-blue-100 hover:bg-blue-200' : isInEmployeesTable ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 bg-white'}`}
                         >
                           <td className="px-2 py-1.5 text-[10px] text-gray-500 font-medium">{idx + 1}</td>
                           <td className="px-2 py-1.5">
                             <div className="flex items-center gap-1.5">
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold ${isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold ${employee.isRemaining ? 'bg-blue-200 text-blue-800' : isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
                                 {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
                               </div>
                               <div>
@@ -1728,8 +1957,8 @@ const AttendanceDaily = () => {
                           <td className="px-2 py-1.5 text-center text-[10px] font-mono">
                             {attendance.out_time ? formatTimeIST(attendance.out_time) : '-'}
                           </td>
-                          <td className="px-2 py-1.5 text-center text-[10px] font-mono text-gray-500 font-medium max-w-[220px] truncate" title={attendance.punch_log || '-'}>
-                            {attendance.punch_log || '-'}
+                          <td className={`px-2 py-1.5 text-center text-[10px] font-mono max-w-[220px] truncate ${isManual ? 'text-red-600 font-semibold' : 'text-gray-500 font-medium'}`} title={punchLogText}>
+                            {punchLogText}
                           </td>
                           <td className="px-2 py-1.5 text-center text-[10px] font-semibold">{attendance.working_hour || '-'}</td>
                           <td className="px-2 py-1.5 text-center text-[10px]">
@@ -1911,69 +2140,45 @@ const AttendanceDaily = () => {
                         <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">
                           Manual Punch Logs (HH:MM)
                         </h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                          {["1", "2", "3", "4"].map((num) => (
-                            <div key={num} className="bg-slate-50 p-2.5 rounded border border-gray-200">
-                              <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase">
-                                Punch #{num}
-                              </label>
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="time"
-                                  value={tempManualPunches[num] || ""}
-                                  onChange={(e) => {
-                                    setTempManualPunches(prev => {
-                                      const updated = { ...prev, [num]: e.target.value };
-                                      const activeVals = ["1", "2", "3", "4", "5"].map(n => updated[n]).filter(Boolean);
-                                      if (activeVals.length > 0) {
-                                        setTempInTime(`${selectedEmployee.date}T${activeVals[0]}`);
-                                        if (activeVals.length > 1) {
-                                          setTempOutTime(`${selectedEmployee.date}T${activeVals[activeVals.length - 1]}`);
-                                        } else {
-                                          setTempOutTime('');
-                                        }
-                                      } else {
-                                        setTempInTime('');
-                                        setTempOutTime('');
-                                      }
-                                      return updated;
-                                    });
-                                  }}
-                                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
-                                />
-                                {tempManualPunches[num] && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setTempManualPunches(prev => {
-                                        const updated = { ...prev, [num]: "" };
-                                        const activeVals = ["1", "2", "3", "4", "5"].map(n => updated[n]).filter(Boolean);
-                                        if (activeVals.length > 0) {
-                                          setTempInTime(`${selectedEmployee.date}T${activeVals[0]}`);
-                                          if (activeVals.length > 1) {
-                                            setTempOutTime(`${selectedEmployee.date}T${activeVals[activeVals.length - 1]}`);
-                                          } else {
-                                            setTempOutTime('');
-                                          }
-                                        } else {
-                                          setTempInTime('');
-                                          setTempOutTime('');
-                                        }
-                                        return updated;
-                                      });
-                                    }}
-                                    className="text-red-500 hover:text-red-700 p-0.5 rounded hover:bg-gray-200 transition-colors"
-                                    title="Delete Punch"
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                )}
+                        {/* List of current sorted punches as tags */}
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {Object.values(tempManualPunches).filter(Boolean).length === 0 ? (
+                            <p className="text-xs text-gray-400 italic">No manual punches added yet.</p>
+                          ) : (
+                            Object.values(tempManualPunches).filter(Boolean).map((time, idx) => (
+                              <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-md text-xs font-semibold font-mono">
+                                <span>{time}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePunch(time)}
+                                  className="text-indigo-400 hover:text-indigo-600 focus:outline-none transition-colors"
+                                  title="Remove Punch"
+                                >
+                                  <X size={12} />
+                                </button>
                               </div>
-                            </div>
-                          ))}
+                            ))
+                          )}
+                        </div>
+
+                        {/* Single input & Add button */}
+                        <div className="flex items-center gap-2 max-w-[240px]">
+                          <input
+                            type="time"
+                            value={newPunchTime}
+                            onChange={(e) => setNewPunchTime(e.target.value)}
+                            className="px-3 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white w-full"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddPunch}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-medium transition-all whitespace-nowrap active:scale-95 shadow-sm"
+                          >
+                            Add Punch
+                          </button>
                         </div>
                         <p className="text-[10px] text-gray-400 mt-2">
-                          💡 Tip: The first punch will be used as the Clock In time, and the last punch will be used as the Clock Out time.
+                          💡 Tip: Added punches are automatically sorted. The earliest punch will be the Clock In and the latest will be the Clock Out.
                         </p>
                       </div>
 

@@ -411,6 +411,24 @@ async function main() {
       }
     }
 
+    const apiManualPunches = {
+      "1": "",
+      "2": "",
+      "3": "",
+      "4": "",
+      "5": ""
+    };
+    logs.forEach((logStr, idx) => {
+      if (idx < 5) {
+        try {
+          const timePart = logStr.split(' ')[1] || '';
+          apiManualPunches[(idx + 1).toString()] = timePart.substring(0, 5);
+        } catch (e) {
+          // ignore
+        }
+      }
+    });
+
     return {
       employee_id: displayCode,
       employee_name: displayName,
@@ -432,6 +450,7 @@ async function main() {
       punch_log_status: punchLogStatus,
       punch_miss: punchMiss,
       punch_miss_msg: punchMissMsg,
+      manual_punches: apiManualPunches,
       updated_at: new Date()
     };
   });
@@ -446,9 +465,14 @@ async function main() {
     if (!fetchErr && existingLogs && existingLogs.length > 0) {
       logsToUpsert = aggregatedData.map(row => {
         const existing = existingLogs.find(r => r.employee_id === row.employee_id);
-        if (existing && existing.manual_punches && Object.values(existing.manual_punches).filter(Boolean).length > 0) {
+        if (existing && existing.manual_punches && (existing.manual_punches.is_manual === true || existing.manual_punches.manual_override === true)) {
           console.log(`✍ [Manual Override Preserved] Keeping manual logs for ${existing.employee_name} (${existing.employee_id})`);
-          return existing;
+          const { id, ...existingWithoutId } = existing;
+          return {
+            ...existingWithoutId,
+            punch_log: row.punch_log,
+            punch_log_status: row.punch_log_status
+          };
         }
         return row;
       });
