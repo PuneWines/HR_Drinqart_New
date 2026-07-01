@@ -1865,7 +1865,7 @@ const AttendanceDaily = () => {
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">In Time (IST)</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">Out Time (IST)</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[180px] z-10">Punch Logs</th>
-                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[180px] z-10">Manual Punches</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[180px] z-10">Punch Logs & Manual Log</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[70px] z-10">Hours</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[60px] z-10">Late</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[50px] z-10">Action</th>
@@ -1895,45 +1895,20 @@ const AttendanceDaily = () => {
                       const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
                       const isInEmployeesTable = isEmployeeInTable(employee.id);
 
-                      const isManual = attendance?.manual_punches && (attendance.manual_punches.is_manual === true || attendance.manual_punches.manual_override === true);
+                      // Get punch_log as it is from database - DO NOT modify or append manual punches
                       let punchLogText = attendance.punch_log || '-';
-                      if (isManual) {
-                        const times = ["1", "2", "3", "4", "5"]
-                          .map(key => attendance.manual_punches[key])
-                          .filter(Boolean);
-                        if (times.length > 0) {
-                          const formatTime12h = (timeVal) => {
-                            try {
-                              const [hStr, mStr] = timeVal.split(":");
-                              const h = parseInt(hStr, 10);
-                              const m = parseInt(mStr, 10);
-                              const ampm = h >= 12 ? "PM" : "AM";
-                              const displayH = h % 12 === 0 ? 12 : h % 12;
-                              const displayM = m.toString().padStart(2, "0");
-                              return `${displayH}:${displayM} ${ampm}`;
-                            } catch (e) {
-                              return timeVal;
-                            }
-                          };
-                          punchLogText = times.map(formatTime12h).join(' | ');
-                        }
-                      }
 
-                      // Format manual_punches JSON for display
+                      // Format manual punches as pipe-separated values (e.g., "10:10 | 11:00")
                       let manualPunchesDisplay = '-';
                       if (attendance?.manual_punches) {
                         const punches = attendance.manual_punches;
-                        // Remove internal flags like is_manual, manual_override if present
-                        const cleanPunches = {};
-                        let hasPunches = false;
-                        ["1", "2", "3", "4", "5"].forEach(key => {
-                          if (punches[key] && punches[key] !== '') {
-                            cleanPunches[key] = punches[key];
-                            hasPunches = true;
-                          }
-                        });
-                        if (hasPunches) {
-                          manualPunchesDisplay = JSON.stringify(cleanPunches);
+                        // Get all punch times and filter out empty values and internal flags
+                        const times = ["1", "2", "3", "4", "5"]
+                          .map(key => punches[key])
+                          .filter(value => value && value !== '' && typeof value === 'string');
+
+                        if (times.length > 0) {
+                          manualPunchesDisplay = times.join(' | ');
                         }
                       }
 
@@ -1974,12 +1949,12 @@ const AttendanceDaily = () => {
                           <td className="px-2 py-1.5 text-center text-[10px] font-mono">
                             {attendance.out_time ? formatTimeIST(attendance.out_time) : '-'}
                           </td>
-                          <td className={`px-2 py-1.5 text-center text-[10px] font-mono max-w-[220px] truncate ${isManual ? 'text-red-600 font-semibold' : 'text-gray-500 font-medium'}`} title={punchLogText}>
+                          <td className="px-2 py-1.5 text-center text-[10px] font-mono max-w-[220px] truncate text-gray-500 font-medium" title={punchLogText}>
                             {punchLogText}
                           </td>
-                          <td className="px-2 py-1.5 text-center text-[9px] font-mono max-w-[180px] truncate" title={manualPunchesDisplay}>
+                          <td className="px-2 py-1.5 text-center text-[10px] font-mono max-w-[180px] truncate" title={manualPunchesDisplay}>
                             {manualPunchesDisplay !== '-' ? (
-                              <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200 font-mono text-[8px]">
+                              <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200 font-mono text-[10px]">
                                 {manualPunchesDisplay}
                               </span>
                             ) : '-'}
