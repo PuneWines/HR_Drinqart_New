@@ -380,113 +380,113 @@ const AttendanceDaily = () => {
   };
 
   // Save attendance to Supabase using UPSERT
-  const saveAttendanceToDB = async (aggregatedData) => {
-    if (!aggregatedData || aggregatedData.length === 0) return [];
+  // const saveAttendanceToDB = async (aggregatedData) => {
+  //   if (!aggregatedData || aggregatedData.length === 0) return [];
 
-    try {
-      const dates = [...new Set(aggregatedData.map(item => item.Date))];
+  //   try {
+  //     const dates = [...new Set(aggregatedData.map(item => item.Date))];
 
-      // Fetch existing logs for these dates to preserve manual_punches
-      const { data: existingLogs } = await supabase
-        .from('attendance_logs')
-        .select('*')
-        .in('attendance_date', dates);
+  //     // Fetch existing logs for these dates to preserve manual_punches
+  //     const { data: existingLogs } = await supabase
+  //       .from('attendance_logs')
+  //       .select('*')
+  //       .in('attendance_date', dates);
 
-      const rows = aggregatedData.map(item => {
-        const existing = existingLogs?.find(
-          r => r.employee_id === item.EmployeeID && r.attendance_date === item.Date
-        );
+  //     const rows = aggregatedData.map(item => {
+  //       const existing = existingLogs?.find(
+  //         r => r.employee_id === item.EmployeeID && r.attendance_date === item.Date
+  //       );
 
-        if (existing && existing.manual_punches && (existing.manual_punches.is_manual === true || existing.manual_punches.manual_override === true)) {
-          return {
-            employee_id: existing.employee_id,
-            employee_name: existing.employee_name,
-            attendance_date: existing.attendance_date,
-            day: existing.day,
-            designation: existing.designation,
-            store_name: existing.store_name,
-            device_id: existing.device_id,
-            serial_number: existing.serial_number,
-            in_time: existing.in_time,
-            out_time: existing.out_time,
-            working_hour: existing.working_hour,
-            overtime: existing.overtime,
-            late_minute: existing.late_minute,
-            status: existing.status,
-            standard_lunch: existing.standard_lunch,
-            waste_time: existing.waste_time,
-            punch_log: item.PunchLog, // update to latest API logs
-            punch_log_status: item.PunchLogStatus, // update to latest API logs
-            punch_miss: existing.punch_miss,
-            punch_miss_msg: existing.punch_miss_msg,
-            manual_punches: existing.manual_punches,
-            updated_at: new Date()
-          };
-        }
+  //       if (existing && existing.manual_punches && (existing.manual_punches.is_manual === true || existing.manual_punches.manual_override === true)) {
+  //         return {
+  //           employee_id: existing.employee_id,
+  //           employee_name: existing.employee_name,
+  //           attendance_date: existing.attendance_date,
+  //           day: existing.day,
+  //           designation: existing.designation,
+  //           store_name: existing.store_name,
+  //           device_id: existing.device_id,
+  //           serial_number: existing.serial_number,
+  //           in_time: existing.in_time,
+  //           out_time: existing.out_time,
+  //           working_hour: existing.working_hour,
+  //           overtime: existing.overtime,
+  //           late_minute: existing.late_minute,
+  //           status: existing.status,
+  //           standard_lunch: existing.standard_lunch,
+  //           waste_time: existing.waste_time,
+  //           punch_log: item.PunchLog, // update to latest API logs
+  //           punch_log_status: item.PunchLogStatus, // update to latest API logs
+  //           punch_miss: existing.punch_miss,
+  //           punch_miss_msg: existing.punch_miss_msg,
+  //           manual_punches: existing.manual_punches,
+  //           updated_at: new Date()
+  //         };
+  //       }
 
-        const apiManualPunches = {
-          "1": "",
-          "2": "",
-          "3": "",
-          "4": "",
-          "5": ""
-        };
-        if (item.RawLogs) {
-          item.RawLogs.forEach((logStr, idx) => {
-            if (idx < 5) {
-              try {
-                const timePart = logStr.split(' ')[1] || '';
-                apiManualPunches[(idx + 1).toString()] = timePart.substring(0, 5);
-              } catch (e) {
-                // ignore
-              }
-            }
-          });
-        }
+  //       const apiManualPunches = {
+  //         "1": "",
+  //         "2": "",
+  //         "3": "",
+  //         "4": "",
+  //         "5": ""
+  //       };
+  //       if (item.RawLogs) {
+  //         item.RawLogs.forEach((logStr, idx) => {
+  //           if (idx < 5) {
+  //             try {
+  //               const timePart = logStr.split(' ')[1] || '';
+  //               apiManualPunches[(idx + 1).toString()] = timePart.substring(0, 5);
+  //             } catch (e) {
+  //               // ignore
+  //             }
+  //           }
+  //         });
+  //       }
 
-        return {
-          employee_id: item.EmployeeID,
-          employee_name: item.EmployeeName,
-          attendance_date: item.Date,
-          day: item.Day,
-          designation: item.Designation,
-          store_name: item.StoreName,
-          device_id: item.DeviceID,
-          serial_number: item.AssignedSerial || item.SerialNumber,
-          in_time: formatToISTISOString(item.InTime),
-          out_time: formatToISTISOString(item.OutTime),
-          working_hour: item.WorkingHour,
-          overtime: item.Overtime,
-          late_minute: item.LateMinute,
-          status: item.Status,
-          standard_lunch: item.StandardLunch,
-          waste_time: item.WasteTime,
-          punch_log: item.PunchLog,
-          punch_log_status: item.PunchLogStatus,
-          punch_miss: item.PunchMiss,
-          punch_miss_msg: item.PunchMissMsg,
-          manual_punches: apiManualPunches,
-          updated_at: new Date()
-        };
-      });
+  //       return {
+  //         employee_id: item.EmployeeID,
+  //         employee_name: item.EmployeeName,
+  //         attendance_date: item.Date,
+  //         day: item.Day,
+  //         designation: item.Designation,
+  //         store_name: item.StoreName,
+  //         device_id: item.DeviceID,
+  //         serial_number: item.AssignedSerial || item.SerialNumber,
+  //         in_time: formatToISTISOString(item.InTime),
+  //         out_time: formatToISTISOString(item.OutTime),
+  //         working_hour: item.WorkingHour,
+  //         overtime: item.Overtime,
+  //         late_minute: item.LateMinute,
+  //         status: item.Status,
+  //         standard_lunch: item.StandardLunch,
+  //         waste_time: item.WasteTime,
+  //         punch_log: item.PunchLog,
+  //         punch_log_status: item.PunchLogStatus,
+  //         punch_miss: item.PunchMiss,
+  //         punch_miss_msg: item.PunchMissMsg,
+  //         manual_punches: apiManualPunches,
+  //         updated_at: new Date()
+  //       };
+  //     });
 
-      const { data, error } = await supabase
-        .from('attendance_logs')
-        .upsert(rows, {
-          onConflict: 'employee_id,attendance_date',
-          ignoreDuplicates: false
-        })
-        .select();
+  //     const { data, error } = await supabase
+  //       .from('attendance_logs')
+  //       .upsert(rows, {
+  //         onConflict: 'employee_id,attendance_date',
+  //         ignoreDuplicates: false
+  //       })
+  //       .select();
 
-      if (error) throw error;
+  //     if (error) throw error;
 
-      console.log(`UPSERT complete: ${data?.length || 0} rows affected`);
-      return data || [];
-    } catch (err) {
-      console.error('Error saving to Supabase:', err);
-      throw err;
-    }
-  };
+  //     console.log(`UPSERT complete: ${data?.length || 0} rows affected`);
+  //     return data || [];
+  //   } catch (err) {
+  //     console.error('Error saving to Supabase:', err);
+  //     throw err;
+  //   }
+  // };
 
   // Sync only changed rows to Google Sheet
   const syncToMachineDataSheet = async (changedRows) => {
@@ -751,6 +751,7 @@ const AttendanceDaily = () => {
     }
   };
 
+  /*
   // Sync device logs helper for custom date range
   const syncLogsForRange = async (queryStart, queryEnd, targetMonth = currentMonth) => {
     setLoading(true);
@@ -1018,14 +1019,11 @@ const AttendanceDaily = () => {
       setLoading(false);
     }
   };
+  */
 
   // Sync device logs
   const syncDeviceLogs = async () => {
-    const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-    const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-    const queryStart = getLocalDateString(startOfMonth);
-    const queryEnd = getLocalDateString(endOfMonth);
-    await syncLogsForRange(queryStart, queryEnd, currentMonth);
+    await fetchAttendanceFromDB(currentMonth);
   };
 
   // Sync only today's logs
@@ -1035,7 +1033,7 @@ const AttendanceDaily = () => {
       setCurrentMonth(today);
     }
     setSelectedDate(todayDate);
-    await syncLogsForRange(todayDate, todayDate, today);
+    await fetchAttendanceFromDB(today);
   };
 
   // Helper to compute metrics from manual punches
@@ -1450,16 +1448,16 @@ const AttendanceDaily = () => {
         .filter(emp => {
           // Exclude if already in employees list (meaning they have logs)
           if (hasAttendance(emp.employee_id)) return false;
-          
+
           // Apply search term and store filters
           const name = emp.name_as_per_aadhar || '';
           const id = emp.employee_id || '';
           const store = emp.joining_place || '';
-          
+
           const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             id.toLowerCase().includes(searchTerm.toLowerCase());
           const matchesStore = selectedStore === 'ALL' || store === selectedStore;
-          
+
           return matchesSearch && matchesStore;
         })
         .map(emp => ({
@@ -1493,18 +1491,18 @@ const AttendanceDaily = () => {
     fetchAttendanceFromDB();
   }, [currentMonth]);
 
-  // Auto-sync logs from biometric API to Supabase (saving to manual_punches) on load / date change
+  // Fetch logs from Supabase on load / date change
   useEffect(() => {
     if (viewMode === 'daily' && selectedDate) {
-      const autoSync = async () => {
+      const autoFetch = async () => {
         try {
-          console.log(`[Auto Sync] Syncing logs for ${selectedDate}...`);
-          await syncLogsForRange(selectedDate, selectedDate);
+          console.log(`[Auto Fetch] Fetching logs for ${selectedDate}...`);
+          await fetchAttendanceFromDB(currentMonth);
         } catch (err) {
-          console.error('[Auto Sync] Failed:', err);
+          console.error('[Auto Fetch] Failed:', err);
         }
       };
-      autoSync();
+      autoFetch();
     }
   }, [selectedDate, viewMode]);
 
@@ -1867,6 +1865,7 @@ const AttendanceDaily = () => {
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">In Time (IST)</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">Out Time (IST)</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[180px] z-10">Punch Logs</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[180px] z-10">Manual Punches</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[70px] z-10">Hours</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[60px] z-10">Late</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[50px] z-10">Action</th>
@@ -1875,7 +1874,7 @@ const AttendanceDaily = () => {
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={10} className="text-center py-6">
+                      <td colSpan={11} className="text-center py-6">
                         <div className="flex items-center justify-center gap-1 text-gray-500 text-xs">
                           <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
                           Loading...
@@ -1884,7 +1883,7 @@ const AttendanceDaily = () => {
                     </tr>
                   ) : error ? (
                     <tr>
-                      <td colSpan={10} className="text-center py-6">
+                      <td colSpan={11} className="text-center py-6">
                         <p className="text-red-600 text-xs mb-2">{error}</p>
                         <button onClick={syncDeviceLogs} className="px-3 py-1 bg-indigo-600 text-white rounded text-xs">Retry</button>
                       </td>
@@ -1920,6 +1919,24 @@ const AttendanceDaily = () => {
                         }
                       }
 
+                      // Format manual_punches JSON for display
+                      let manualPunchesDisplay = '-';
+                      if (attendance?.manual_punches) {
+                        const punches = attendance.manual_punches;
+                        // Remove internal flags like is_manual, manual_override if present
+                        const cleanPunches = {};
+                        let hasPunches = false;
+                        ["1", "2", "3", "4", "5"].forEach(key => {
+                          if (punches[key] && punches[key] !== '') {
+                            cleanPunches[key] = punches[key];
+                            hasPunches = true;
+                          }
+                        });
+                        if (hasPunches) {
+                          manualPunchesDisplay = JSON.stringify(cleanPunches);
+                        }
+                      }
+
                       return (
                         <tr
                           key={employee.id}
@@ -1937,9 +1954,9 @@ const AttendanceDaily = () => {
                                 {isInEmployeesTable && (
                                   <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
                                 )}
-                                {attendance?.manual_punches && Object.values(attendance.manual_punches).filter(Boolean).length > 0 && (
+                                {attendance?.manual_punches && Object.values(attendance.manual_punches).filter(v => v && v !== '' && typeof v === 'string').length > 0 && (
                                   <span className="inline-block mt-0.5 px-1 py-0.5 bg-purple-50 text-purple-600 rounded text-[7px] font-bold border border-purple-100">
-                                    ✍ Manual ({Object.values(attendance.manual_punches).filter(Boolean).length})
+                                    ✍ Manual ({Object.values(attendance.manual_punches).filter(v => v && v !== '' && typeof v === 'string').length})
                                   </span>
                                 )}
                               </div>
@@ -1960,6 +1977,13 @@ const AttendanceDaily = () => {
                           <td className={`px-2 py-1.5 text-center text-[10px] font-mono max-w-[220px] truncate ${isManual ? 'text-red-600 font-semibold' : 'text-gray-500 font-medium'}`} title={punchLogText}>
                             {punchLogText}
                           </td>
+                          <td className="px-2 py-1.5 text-center text-[9px] font-mono max-w-[180px] truncate" title={manualPunchesDisplay}>
+                            {manualPunchesDisplay !== '-' ? (
+                              <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200 font-mono text-[8px]">
+                                {manualPunchesDisplay}
+                              </span>
+                            ) : '-'}
+                          </td>
                           <td className="px-2 py-1.5 text-center text-[10px] font-semibold">{attendance.working_hour || '-'}</td>
                           <td className="px-2 py-1.5 text-center text-[10px]">
                             {attendance.late_minute > 0 ? (
@@ -1979,7 +2003,7 @@ const AttendanceDaily = () => {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={10} className="text-center py-8">
+                      <td colSpan={11} className="text-center py-8">
                         <div className="flex flex-col items-center justify-center text-gray-400">
                           <Users size={32} className="mb-2" />
                           <p className="text-xs font-medium">No employees found</p>
