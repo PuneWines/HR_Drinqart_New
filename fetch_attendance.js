@@ -130,7 +130,7 @@ const calculateWorkHours = (inStr, outStr) => {
   }
 };
 
-const calculateLateMinutes = (inStr) => {
+const calculateLateMinutes = (inStr, shift) => {
   if (!inStr || inStr === '-') return 0;
   try {
     const inDate = parseISTToDate(inStr);
@@ -147,8 +147,16 @@ const calculateLateMinutes = (inStr) => {
     const minute = parseInt(parts.find(p => p.type === 'minute').value, 10);
     const totalMinutes = hour * 60 + minute;
 
-    const officialStartTime = 10 * 60 + 0;      // 10:00 AM
-    const graceTimeThreshold = 10 * 60 + 10;    // 10:10 AM
+    let officialStartTime = 10 * 60 + 0;      // 10:00 AM
+    let graceTimeThreshold = 10 * 60 + 10;    // 10:10 AM
+
+    if (shift && shift.start_time) {
+      const timeParts = shift.start_time.split(':');
+      const shiftHour = parseInt(timeParts[0], 10);
+      const shiftMinute = parseInt(timeParts[1], 10);
+      officialStartTime = shiftHour * 60 + shiftMinute;
+      graceTimeThreshold = officialStartTime + 10;
+    }
 
     if (totalMinutes >= graceTimeThreshold) {
       return totalMinutes - officialStartTime;
@@ -270,54 +278,83 @@ async function main() {
   console.log(`🚀 Starting attendance fetch and sync process for: ${targetDate}`);
 
   // Fetch all metadata and device logs in parallel
-  const [joiningData, masterMapping, ...deviceResponses] = await Promise.all([
+  const [joiningData, masterMapping, rosterResult, ...deviceResponses] = await Promise.all([
     fetchJoiningData(),
     fetchMasterMapping(),
+    supabase.from('shift_roster').select('*').eq('date', targetDate),
     ...DEVICES.map(dev => fetchLogsForDevice(dev, targetDate))
   ]);
 
+  const rosterList = rosterResult?.data || [];
   const rawLogsData = deviceResponses.flat();
   console.log(`✅ Fetched ${rawLogsData.length} raw logs from biometric devices.`);
 
-  if (rawLogsData.length === 0) {
-    console.log('ℹ️ No attendance logs found for this date. Exiting.');
-    return;
-  }
-
-  // Filter logs for the specific date
-  const filteredLogs = rawLogsData.filter(log => {
-    if (!log.LogDate) return false;
-    const logDateStr = log.LogDate.split(' ')[0];
-    return logDateStr === targetDate;
-  });
-
-  console.log(`🔍 Filtered down to ${filteredLogs.length} logs matching date: ${targetDate}`);
-  if (filteredLogs.length === 0) {
-    console.log('ℹ️ No matching log dates after filtering. Exiting.');
-    return;
-  }
-
-  // Sort logs chronologically
-  filteredLogs.sort((a, b) => new Date(a.LogDate) - new Date(b.LogDate));
-
-  // Group logs by EmployeeCode
+  // Group logs by EmployeeCode (we will also merge roster shifts for employees who didn't punch)
   const grouped = {};
-  filteredLogs.forEach(log => {
-    if (!log.EmployeeCode || !log.LogDate) return;
-    const code = log.EmployeeCode.toString().trim();
-    const key = `${code}_${targetDate}`;
 
+  if (rawLogsData.length > 0) {
+    // Filter logs for the specific date
+    const filteredLogs = rawLogsData.filter(log => {
+      if (!log.LogDate) return false;
+      const logDateStr = log.LogDate.split(' ')[0];
+      return logDateStr === targetDate;
+    });
+
+    console.log(`🔍 Filtered down to ${filteredLogs.length} logs matching date: ${targetDate}`);
+
+    // Sort logs chronologically
+    filteredLogs.sort((a, b) => new Date(a.LogDate) - new Date(b.LogDate));
+
+    filteredLogs.forEach(log => {
+      if (!log.EmployeeCode || !log.LogDate) return;
+      const code = log.EmployeeCode.toString().trim();
+      const key = `${code}_${targetDate}`;
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          EmployeeCode: code,
+          Date: targetDate,
+          SerialNumber: log.SerialNumber,
+          SourceDeviceName: log._DeviceName,
+          logs: []
+        };
+      }
+      grouped[key].logs.push(log.LogDate);
+    });
+  }
+
+  // Add shift roster employees who did not punch to grouped logs as Absent
+  rosterList.forEach(shift => {
+    const empId = shift.employee_id.toString().trim();
+    const key = `${empId}_${targetDate}`;
     if (!grouped[key]) {
+      // Find employee name and metadata
+      const empMeta = joiningData.find(e =>
+        (e.id && e.id.toLowerCase() === empId.toLowerCase()) ||
+        (e.name && e.name.toLowerCase() === empId.toLowerCase())
+      );
+      let dMap = masterMapping.find(m => m.userId && m.userId.toString().toLowerCase() === empId.toLowerCase());
+      if (!dMap && empMeta) {
+        const entryName = (empMeta.name || empId).toString().trim().toLowerCase();
+        dMap = masterMapping.find(m => m.name && m.name.toString().toLowerCase() === entryName);
+      }
+
+      const displayName = dMap ? dMap.name : (empMeta ? empMeta.name : 'Unknown');
+
       grouped[key] = {
-        EmployeeCode: code,
+        EmployeeCode: empId,
         Date: targetDate,
-        SerialNumber: log.SerialNumber,
-        SourceDeviceName: log._DeviceName,
-        logs: []
+        SerialNumber: dMap ? dMap.serialNo : '-',
+        SourceDeviceName: dMap ? dMap.storeName : '-',
+        logs: [], // Empty logs means Absent
       };
     }
-    grouped[key].logs.push(log.LogDate);
   });
+
+  if (Object.keys(grouped).length === 0) {
+    console.log('ℹ️ No attendance logs or roster shifts found for this date. Exiting.');
+    return;
+  }
 
   // Aggregate and calculate metrics
   const aggregatedData = Object.values(grouped).map(group => {
@@ -327,26 +364,36 @@ async function main() {
     let punchMiss = 'No';
     let punchMissMsg = '';
 
+    // Lookup shift roster for this employee
+    const code = group.EmployeeCode.toString().trim();
+    const shift = rosterList.find(s => s.employee_id === code);
+
     if (logs.length === 1) {
       const punchTime = logs[0];
       const timePart = punchTime.split(' ')[1] || '';
       const hours = parseInt(timePart.split(':')[0]) || 0;
 
       punchMiss = 'Yes';
-      if (hours >= 15) {
+      let morningPunchThreshold = 15; // 3 PM default
+      if (shift && shift.start_time && shift.end_time) {
+        const endHour = parseInt(shift.end_time.split(':')[0]) || 18;
+        const startHour = parseInt(shift.start_time.split(':')[0]) || 9;
+        morningPunchThreshold = Math.floor((startHour + endHour) / 2);
+      }
+
+      if (hours >= morningPunchThreshold) {
         outTime = punchTime;
         punchMissMsg = 'Morning Punch Miss';
       } else {
         inTime = punchTime;
         punchMissMsg = 'Evening Punch Miss';
       }
-    } else {
+    } else if (logs.length > 1) {
       inTime = logs[0];
       outTime = logs[logs.length - 1];
     }
 
     const serial = group.SerialNumber.toString().trim();
-    const code = group.EmployeeCode.toString().trim();
     const isNumeric = !isNaN(code) && code !== '';
 
     // Metadata Lookup
@@ -368,8 +415,8 @@ async function main() {
     const displayDeviceId = dMap ? dMap.deviceId : '-';
     const displayAssignedSerial = dMap ? dMap.serialNo : serial;
 
-    const lateMins = calculateLateMinutes(inTime);
-    const workHrs = punchMiss === 'Yes' ? '00:00:00' : calculateWorkHours(inTime, outTime);
+    const lateMins = calculateLateMinutes(inTime, shift);
+    const workHrs = (punchMiss === 'Yes' || logs.length === 0) ? '00:00:00' : calculateWorkHours(inTime, outTime);
 
     // Lunch and Waste Time Calculation
     let actualLunchMs = 0;
@@ -390,8 +437,11 @@ async function main() {
     const dateObj = parseISTToDate(group.Date);
     const dayName = dateObj ? new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(dateObj) : '';
 
-    let status = 'Present';
-    if (lateMins > 0) status = 'Late';
+    let status = 'Absent';
+    if (logs.length > 0) {
+      status = 'Present';
+      if (lateMins > 0) status = 'Late';
+    }
 
     const punchLogStr = logs.map(l => formatTimeIST(l)).join(' | ');
 
@@ -402,7 +452,15 @@ async function main() {
           const punchTime = logs[0];
           const timePart = punchTime.split(' ')[1] || '';
           const hours = parseInt(timePart.split(':')[0]) || 0;
-          punchLogStatus = hours >= 15 ? 'Bahar' : 'Andar';
+
+          let morningPunchThreshold = 15;
+          if (shift && shift.start_time && shift.end_time) {
+            const endHour = parseInt(shift.end_time.split(':')[0]) || 18;
+            const startHour = parseInt(shift.start_time.split(':')[0]) || 9;
+            morningPunchThreshold = Math.floor((startHour + endHour) / 2);
+          }
+
+          punchLogStatus = hours >= morningPunchThreshold ? 'Bahar' : 'Andar';
         } else {
           punchLogStatus = 'Andar';
         }
@@ -411,18 +469,15 @@ async function main() {
       }
     }
 
-    const apiManualPunches = {
-      "1": "",
-      "2": "",
-      "3": "",
-      "4": "",
-      "5": ""
+    const nestedManualPunches = {
+      api: {},
+      manual: {}
     };
     logs.forEach((logStr, idx) => {
       if (idx < 5) {
         try {
           const timePart = logStr.split(' ')[1] || '';
-          apiManualPunches[(idx + 1).toString()] = timePart.substring(0, 5);
+          nestedManualPunches.api[(idx + 1).toString()] = timePart.substring(0, 5);
         } catch (e) {
           // ignore
         }
@@ -450,7 +505,8 @@ async function main() {
       punch_log_status: punchLogStatus,
       punch_miss: punchMiss,
       punch_miss_msg: punchMissMsg,
-      manual_punches: apiManualPunches,
+      manual_punches: nestedManualPunches,
+      is_Late: lateMins > 0,
       updated_at: new Date()
     };
   });
@@ -460,12 +516,18 @@ async function main() {
   try {
     const { data: existingLogs, error: fetchErr } = await supabase
       .from('attendance_logs')
+      .select('*')
       .eq('attendance_date', targetDate);
 
     if (!fetchErr && existingLogs && existingLogs.length > 0) {
       logsToUpsert = aggregatedData.map(row => {
         const existing = existingLogs.find(r => r.employee_id === row.employee_id);
-        if (existing && existing.manual_punches && (existing.manual_punches.is_manual === true || existing.manual_punches.manual_override === true)) {
+        if (existing && existing.manual_punches && (
+          existing.manual_punches.is_manual === true ||
+          existing.manual_punches.manual_override === true ||
+          existing.manual_punches.manual?.is_manual === true ||
+          existing.manual_punches.manual?.manual_override === true
+        )) {
           console.log(`✍ [Manual Override Preserved] Keeping manual logs for ${existing.employee_name} (${existing.employee_id})`);
           const { id, ...existingWithoutId } = existing;
           return {

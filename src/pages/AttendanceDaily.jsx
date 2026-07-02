@@ -216,6 +216,7 @@ const AttendanceDaily = () => {
   const [employeesData, setEmployeesData] = useState([]); // Store employees table data
   const [showUnmatched, setShowUnmatched] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [rosterData, setRosterData] = useState([]); // Store shift_roster data
 
   // Reset page to 1 on filter changes
   useEffect(() => {
@@ -298,14 +299,36 @@ const AttendanceDaily = () => {
     return employeesData.some(emp => emp.id === employeeId || emp.employee_id === employeeId);
   };
 
-  // Fetch roster data from shift_roster table (stubbed out)
-  const fetchRosterData = async (employeeId, date) => {
-    return new Map();
+  // Fetch roster data from shift_roster table
+  const fetchRosterData = async (employeeId, dateStr) => {
+    try {
+      const parsedDate = dateStr ? new Date(dateStr) : currentMonth;
+      const year = parsedDate.getFullYear();
+      const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+      const startDayStr = `${year}-${month}-01`;
+      const lastDay = new Date(year, parsedDate.getMonth() + 1, 0).getDate();
+      const endDayStr = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+
+      const { data, error } = await supabase
+        .from('shift_roster')
+        .select('*')
+        .gte('date', startDayStr)
+        .lte('date', endDayStr);
+
+      if (error) throw error;
+      setRosterData(data || []);
+    } catch (error) {
+      console.error('Error fetching roster data:', error);
+    }
   };
 
-  // Get roster for an employee on a specific date (stubbed out)
+  // Get roster for an employee on a specific date
   const getEmployeeRoster = (employeeId, date) => {
-    return null;
+    if (!rosterData || rosterData.length === 0) return null;
+    return rosterData.find(r =>
+      (r.employee_id?.toString().toLowerCase() === employeeId?.toString().toLowerCase()) &&
+      (r.date === date)
+    );
   };
 
   const formatTime12h = (dateStr) => {
@@ -1133,7 +1156,12 @@ const AttendanceDaily = () => {
 
         const finalManualPunches = {
           api: existingApi,
-          manual: {}
+          manual: {
+            is_manual: true,
+            manual_override: true
+          },
+          is_manual: true,
+          manual_override: true
         };
 
         const manualKeys = Object.keys(manualPunches).filter(k =>
@@ -1145,7 +1173,7 @@ const AttendanceDaily = () => {
         );
 
         if (manualPunches.absent) {
-          finalManualPunches.manual = { absent: true };
+          finalManualPunches.manual.absent = true;
         } else {
           manualKeys.forEach(key => {
             const val = manualPunches[key];
@@ -1893,6 +1921,7 @@ const AttendanceDaily = () => {
                     const isInEmployeesTable = isEmployeeInTable(employee.id);
                     const employeeProfile = employeesData.find(e => e.employee_id === employee.id || e.id === employee.id);
                     const candidatePhoto = employeeProfile?.candidate_photo || employee.candidate_photo;
+                    const employeeRoster = getEmployeeRoster(employee.id, selectedDate);
 
                     return (
                       <tr
@@ -1901,20 +1930,40 @@ const AttendanceDaily = () => {
                       >
                         <td className={`sticky left-0 px-2 py-1.5 border-r z-10 ${employee.isRemaining ? 'bg-blue-100' : isInEmployeesTable ? 'bg-blue-50' : 'bg-white'}`}>
                           <div className="flex items-center gap-1.5">
-                            {candidatePhoto ? (
-                              <img
-                                src={candidatePhoto}
-                                alt={employee.name}
-                                className="w-6 h-6 rounded-full object-cover border border-gray-200 flex-shrink-0"
-                              />
-                            ) : (
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${employee.isRemaining ? 'bg-blue-200 text-blue-800' : isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
-                                {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
-                              </div>
-                            )}
+                            <div className="relative flex-shrink-0">
+                              {candidatePhoto ? (
+                                <img
+                                  src={candidatePhoto}
+                                  alt={employee.name}
+                                  className="w-6 h-6 rounded-full object-cover border border-gray-200 flex-shrink-0"
+                                />
+                              ) : (
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${employee.isRemaining ? 'bg-blue-200 text-blue-800' : isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                                  {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
+                                </div>
+                              )}
+                              {employeeRoster && (
+                                <span
+                                  className="absolute -top-1 -left-1 w-3 h-3 bg-indigo-600 rounded-full border border-white flex items-center justify-center text-[7px] text-white font-bold leading-none select-none shadow-sm cursor-help animate-pulse"
+                                  title={`Shift Assigned: ${employeeRoster.shift_type} (${employeeRoster.start_time?.substring(0, 5)} - ${employeeRoster.end_time?.substring(0, 5)})`}
+                                >
+                                  S
+                                </span>
+                              )}
+                            </div>
                             <div>
                               <p className="text-xs font-medium text-gray-900">{employee.name}</p>
-                              <p className="text-[9px] text-gray-500">{employee.id}</p>
+                              <div className="flex items-center gap-1">
+                                <p className="text-[9px] text-gray-500">{employee.id}</p>
+                                {employeeRoster && (
+                                  <span
+                                    className="inline-flex items-center px-1 rounded bg-indigo-50 border border-indigo-100 text-[8px] font-semibold text-indigo-700 leading-none py-0.5 cursor-help"
+                                    title={`Shift Assigned: ${employeeRoster.shift_type} (${employeeRoster.start_time?.substring(0, 5)} - ${employeeRoster.end_time?.substring(0, 5)})`}
+                                  >
+                                    📅 {employeeRoster.shift_type?.substring(0, 10)}
+                                  </span>
+                                )}
+                              </div>
                               {isInEmployeesTable && (
                                 <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
                               )}
@@ -1949,6 +1998,15 @@ const AttendanceDaily = () => {
                                   const hasManual = Object.values(punches).some(v => v && v !== '' && typeof v === 'string');
                                   return hasManual ? (
                                     <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-purple-500 rounded-full border border-white" title="Manual punch log" />
+                                  ) : null;
+                                })()}
+                                {(() => {
+                                  const dayRoster = getEmployeeRoster(employee.id, day.fullDate);
+                                  return dayRoster ? (
+                                    <span
+                                      className="absolute -bottom-0.5 -left-0.5 w-1.5 h-1.5 bg-indigo-600 rounded-full border border-white cursor-help"
+                                      title={`Shift: ${dayRoster.shift_type} (${dayRoster.start_time?.substring(0, 5)} - ${dayRoster.end_time?.substring(0, 5)})`}
+                                    />
                                   ) : null;
                                 })()}
                               </div>
@@ -2124,6 +2182,7 @@ const AttendanceDaily = () => {
 
                       const employeeProfile = employeesData.find(e => e.employee_id === employee.id);
                       const candidatePhoto = employeeProfile?.candidate_photo || employee.candidate_photo;
+                      const employeeRoster = getEmployeeRoster(employee.id, selectedDate);
 
                       let totalPunches = 0;
                       if (attendance?.manual_punches) {
@@ -2146,23 +2205,43 @@ const AttendanceDaily = () => {
                           className={`transition-colors ${employee.isRemaining ? 'bg-blue-100 hover:bg-blue-200' : isInEmployeesTable ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 bg-white'}`}
                         >
                           <td className="px-2 py-1.5 text-[10px] text-gray-500 font-medium">{(activePage - 1) * pageSize + idx + 1}</td>
-                          <td className="px-2 py-1.5">
+                          <td className="px-2 py-1.5 pl-0">
                             <div className="flex items-center justify-between w-full gap-1.5">
                               <div className="flex items-center gap-1.5">
-                                {candidatePhoto ? (
-                                  <img
-                                    src={candidatePhoto}
-                                    alt={employee.name}
-                                    className="w-6 h-6 rounded-full object-cover border border-gray-200 flex-shrink-0"
-                                  />
-                                ) : (
-                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${employee.isRemaining ? 'bg-blue-200 text-blue-800' : isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
-                                    {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
-                                  </div>
-                                )}
+                                <div className="relative flex-shrink-0">
+                                  {candidatePhoto ? (
+                                    <img
+                                      src={candidatePhoto}
+                                      alt={employee.name}
+                                      className="w-7 h-7 rounded-full object-cover border border-gray-200 flex-shrink-0"
+                                    />
+                                  ) : (
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${employee.isRemaining ? 'bg-blue-200 text-blue-800' : isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                                      {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
+                                    </div>
+                                  )}
+                                  {employeeRoster && (
+                                    <span
+                                      className="absolute -top-1 -left-1 w-3 h-3 bg-indigo-600 rounded-full border border-white flex items-center justify-center text-[7px] text-white font-bold leading-none select-none shadow-sm cursor-help animate-pulse"
+                                      title={`Shift Assigned: ${employeeRoster.shift_type} (${employeeRoster.start_time?.substring(0, 5)} - ${employeeRoster.end_time?.substring(0, 5)})`}
+                                    >
+                                      S
+                                    </span>
+                                  )}
+                                </div>
                                 <div>
                                   <p className="text-xs font-medium text-gray-900">{employee.name}</p>
-                                  <p className="text-[9px] text-gray-500">{employee.id}</p>
+                                  <div className="flex items-center gap-1">
+                                    <p className="text-[9px] text-gray-500">{employee.id}</p>
+                                    {employeeRoster && (
+                                      <span
+                                        className="inline-flex items-center px-1 rounded bg-indigo-50 border border-indigo-100 text-[8px] font-semibold text-indigo-700 leading-none py-0.5 cursor-help"
+                                        title={`Shift Assigned: ${employeeRoster.shift_type} (${employeeRoster.start_time?.substring(0, 5)} - ${employeeRoster.end_time?.substring(0, 5)})`}
+                                      >
+                                        📅 {employeeRoster.shift_type?.substring(0, 10)}
+                                      </span>
+                                    )}
+                                  </div>
                                   {isInEmployeesTable && (
                                     <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
                                   )}
