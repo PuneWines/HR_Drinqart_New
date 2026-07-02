@@ -438,7 +438,7 @@ const AttendanceMonthly = () => {
 
             {/* Table - Compact */}
             <div className="bg-white rounded-md border border-gray-200 overflow-hidden ">
-                <div className="overflow-x-auto h-[60vh] overflow-y-auto">
+                <div className="overflow-x-auto h-[60vh] overflow-y-auto scrollbar-thin">
                     <table className="w-full text-xs relative border-collapse">
                         <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
                             <tr>

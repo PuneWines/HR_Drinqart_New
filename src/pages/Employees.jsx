@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Users, UserPlus, Search, Eye, Edit, Trash2, X, Save, XCircle, Sparkles, Filter, Upload, Image, File, User, CreditCard, BookOpen, FileText, ExternalLink, ChevronLeft } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -22,6 +22,7 @@ export default function EmployeeManagement() {
   const [shopSearchInput, setShopSearchInput] = useState('')
   const [isShopDropdownOpen, setIsShopDropdownOpen] = useState(false)
   const shopDropdownRef = useRef(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
 
   // File preview states for add form
@@ -242,6 +243,66 @@ export default function EmployeeManagement() {
 
     return matchesSearch && matchesShop;
   })
+
+  const pageSize = 15;
+  const totalPages = Math.ceil(filteredEmployees.length / pageSize);
+  const activePage = Math.min(currentPage, Math.max(1, totalPages));
+  const paginatedEmployees = filteredEmployees.slice((activePage - 1) * pageSize, activePage * pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, shopFilter]);
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+    return (
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs">
+        <div className="text-gray-500">
+          Showing <span className="font-semibold">{(activePage - 1) * pageSize + 1}</span> to <span className="font-semibold">{Math.min(activePage * pageSize, filteredEmployees.length)}</span> of <span className="font-semibold">{filteredEmployees.length}</span> employees
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            disabled={activePage === 1}
+            type="button"
+            onClick={() => setCurrentPage(activePage - 1)}
+            className="px-2.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium rounded shadow-sm"
+          >
+            Previous
+          </button>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(page => page === 1 || page === totalPages || Math.abs(page - activePage) <= 1)
+              .map((page, index, arr) => {
+                const showEllipsis = index > 0 && page - arr[index - 1] > 1;
+                return (
+                  <React.Fragment key={page}>
+                    {showEllipsis && <span className="text-gray-400 px-1">...</span>}
+                    <button
+                      onClick={() => setCurrentPage(page)}
+                      type="button"
+                      className={`w-7 h-7 flex items-center justify-center font-medium rounded transition-colors ${activePage === page
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-white border border-gray-300 hover:bg-gray-50 text-gray-700'
+                        }`}
+                    >
+                      {page}
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+          </div>
+          <button
+            disabled={activePage === totalPages}
+            type="button"
+            onClick={() => setCurrentPage(activePage + 1)}
+            className="px-2.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium rounded shadow-sm"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const addFormEmployeeIdExists = formData.employee_id ? employees.some(emp => emp.employee_id === formData.employee_id) : false;
   const editFormEmployeeIdExists = editFormData.employee_id && editingEmployee ? employees.some(emp => emp.employee_id === editFormData.employee_id && emp.id !== editingEmployee.id) : false;
@@ -1138,106 +1199,109 @@ export default function EmployeeManagement() {
 
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 overflow-x-auto overflow-y-scroll max-h-[77vh]">
-        <table className="w-full text-xs ">
-          <thead className="bg-gray-100 border-b border-gray-100 sticky top-0">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Employee ID</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Date Of Joining</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Mobile Number</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Father Name</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Work Location</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Designation</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Shop name</th>
-
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? (
+      <div className="bg-white rounded-md overflow-hidden border border-gray-200 shadow-sm">
+        <div className="overflow-x-auto overflow-y-scroll max-h-[73vh] scrollbar-thin">
+          <table className="w-full text-xs ">
+            <thead className="bg-gray-100 border-b border-gray-100 sticky top-0">
               <tr>
-                <td colSpan="10" className="text-center py-8 text-gray-500">Loading...</td>
-              </tr>
-            ) : filteredEmployees.length === 0 ? (
-              <tr>
-                <td colSpan="10" className="text-center py-8 text-gray-500">No employees found</td>
-              </tr>
-            ) : (
-              filteredEmployees.map((emp) => (
-                <tr
-                  key={emp.id}
-                  className="hover:bg-gray-50 cursor-pointer transition-colors"
-                  onClick={() => handleViewDetails(emp)}
-                >
-                  <td className="px-4 py-3 text-gray-900">
-                    {emp.employee_id}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {emp.candidate_photo ? (
-                        <img
-                          src={emp.candidate_photo}
-                          alt={emp.name_as_per_aadhar}
-                          className="w-7 h-7 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-medium">
-                          {emp.name_as_per_aadhar?.charAt(0) || '?'}
-                        </div>
-                      )}
-                      {emp.name_as_per_aadhar}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {emp.date_of_joining}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {emp.mobile_no}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {emp.father_name || '-'}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {emp.joining_place}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {emp.designation}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {emp.joining_company_name}
-                  </td>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Employee ID</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Date Of Joining</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Mobile Number</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Father Name</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Work Location</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Designation</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Shop name</th>
 
-
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditPanel(emp);
-                        }}
-                        className="p-1 text-blue-600 hover:text-blue-700 transition-colors"
-                        title="Edit"
-                      >
-                        <Edit size={16} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(emp);
-                        }}
-                        className="p-1 text-red-600 hover:text-red-700 transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loading ? (
+                <tr>
+                  <td colSpan="10" className="text-center py-8 text-gray-500">Loading...</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : filteredEmployees.length === 0 ? (
+                <tr>
+                  <td colSpan="10" className="text-center py-8 text-gray-500">No employees found</td>
+                </tr>
+              ) : (
+                paginatedEmployees.map((emp) => (
+                  <tr
+                    key={emp.id}
+                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => handleViewDetails(emp)}
+                  >
+                    <td className="px-4 py-3 text-gray-900">
+                      {emp.employee_id}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {emp.candidate_photo ? (
+                          <img
+                            src={emp.candidate_photo}
+                            alt={emp.name_as_per_aadhar}
+                            className="w-7 h-7 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-medium">
+                            {emp.name_as_per_aadhar?.charAt(0) || '?'}
+                          </div>
+                        )}
+                        {emp.name_as_per_aadhar}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {emp.date_of_joining}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {emp.mobile_no}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {emp.father_name || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {emp.joining_place}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {emp.designation}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {emp.joining_company_name}
+                    </td>
+
+
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditPanel(emp);
+                          }}
+                          className="p-1 text-blue-600 hover:text-blue-700 transition-colors"
+                          title="Edit"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(emp);
+                          }}
+                          className="p-1 text-red-600 hover:text-red-700 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {renderPagination()}
       </div>
 
       {/* Modal Popup for Add Employee Form */}

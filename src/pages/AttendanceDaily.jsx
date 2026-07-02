@@ -249,6 +249,8 @@ const AttendanceDaily = () => {
   const [tempManualPunches, setTempManualPunches] = useState({ "1": "", "2": "", "3": "", "4": "", "5": "" });
   const [newPunchTime, setNewPunchTime] = useState('');
   const [isSlidePanelOpen, setIsSlidePanelOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
   // Manual attendance marking state
   const [isMarkModalOpen, setIsMarkModalOpen] = useState(false);
@@ -257,6 +259,21 @@ const AttendanceDaily = () => {
   const [markStatus, setMarkStatus] = useState('Present');
   const [markInTime, setMarkInTime] = useState('');
   const [markOutTime, setMarkOutTime] = useState('');
+
+  const handleRefresh = async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        fetchEmployeesTable(),
+        fetchRosterData(null, selectedDate),
+        fetchAttendanceFromDB(currentMonth)
+      ]);
+    } catch (err) {
+      console.error('Error refreshing data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Fetch employees from employees table
   const fetchEmployeesTable = async () => {
@@ -1482,9 +1499,12 @@ const AttendanceDaily = () => {
   };
 
   // Handle save from slide panel
-  const handleSaveFromSlidePanel = () => {
-    if (selectedEmployee) {
-      updateAttendanceStatus(
+  const handleSaveFromSlidePanel = async () => {
+    if (!selectedEmployee) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await updateAttendanceStatus(
         selectedEmployee.id,
         selectedEmployee.date,
         tempStatus,
@@ -1495,6 +1515,10 @@ const AttendanceDaily = () => {
           is_manual: true
         }
       );
+    } catch (err) {
+      setSaveError(err?.message || 'Failed to save attendance. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1853,6 +1877,16 @@ const AttendanceDaily = () => {
 
         {viewMode === 'daily' && (
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleRefresh}
+              disabled={loading}
+              type="button"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-white text-gray-700 hover:bg-gray-50 transition-all active:scale-95 text-xs font-semibold rounded border border-gray-200 mr-2 disabled:opacity-50"
+              title="Refresh Data"
+            >
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+              <span>Refresh</span>
+            </button>
             <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Date:</span>
             <input
               type="date"
@@ -1864,22 +1898,7 @@ const AttendanceDaily = () => {
         )}
       </div>
 
-      {/* Status Legend - Compact */}
-      {/* <div className="bg-gray-100 rounded-md p-2 mb-3">
-        <div className="flex flex-wrap gap-3">
-          <span className="text-[11px] font-medium text-gray-700">Status:</span>
-          {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-            <div key={key} className="flex items-center gap-1">
-              <div className={`w-3 h-3 rounded ${config.bgColor} border`}></div>
-              <span className="text-[10px] text-gray-600">{config.fullLabel}</span>
-            </div>
-          ))}
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded bg-orange-100 border border-orange-300"></div>
-            <span className="text-[10px] text-orange-600 font-medium">Late (After 10:10 AM IST)</span>
-          </div>
-        </div>
-      </div> */}
+
 
       {/* Filter Section - Compact */}
       <div className="bg-white rounded-md p-2 mb-3">
@@ -1941,7 +1960,7 @@ const AttendanceDaily = () => {
       {viewMode === 'calendar' ? (
         /* Calendar View - Compact */
         <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto overflow-y-auto max-h-[calc(88vh-220px)]">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(88vh-220px)] scrollbar-thin">
             <table className="w-full text-xs relative border-collapse">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20 shadow-sm">
                 <tr>
@@ -2105,7 +2124,7 @@ const AttendanceDaily = () => {
         /* Daily List View - Compact */
         <>
           <div className="bg-white rounded-md overflow-hidden shadow-sm">
-            <div className="overflow-x-auto overflow-y-auto max-h-[calc(87vh-220px)]">
+            <div className="overflow-x-auto overflow-y-auto max-h-[calc(89vh-220px)] scrollbar-thin">
               <table className="w-full text-xs relative border-collapse">
                 <thead className=" border-b border-gray-200 sticky top-0 z-10 shadow-sm">
                   <tr>
@@ -2463,20 +2482,6 @@ const AttendanceDaily = () => {
                         </select>
                       </div>
 
-                      {/* Mark Attendance By */}
-                      {/* <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mark Attendance By</label>
-                        <div className="flex items-center gap-4 mt-2">
-                          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                            <input type="radio" checked={true} readOnly className="w-4 h-4 text-red-600 focus:ring-red-500 border-gray-300" />
-                            <span>Date</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-not-allowed">
-                            <input type="radio" disabled className="w-4 h-4 text-gray-300 border-gray-300" />
-                            <span>Month</span>
-                          </label>
-                        </div>
-                      </div> */}
 
                       {/* Year */}
                       <div>
@@ -2533,7 +2538,7 @@ const AttendanceDaily = () => {
                       {/* Manual Attendance Logs */}
                       <div className="md:col-span-2 lg:col-span-3 border-t border-gray-100 pt-4 mt-2">
                         <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">
-                          Manual Punch Logs (HH:MM)
+                          Add Manual Punch Logs (HH:MM)
                         </h4>
                         {/* List of current sorted punches as tags */}
                         <div className="flex flex-wrap gap-2 mb-4">
@@ -2577,34 +2582,6 @@ const AttendanceDaily = () => {
                         </p>
                       </div>
 
-                      {/* Late (Yes/No radio) */}
-                      {/* <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Late</label>
-                        <div className="flex items-center gap-4 mt-2">
-                          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="lateRadio"
-                              checked={tempStatus === 'Late'}
-                              onChange={() => setTempStatus('Late')}
-                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                            />
-                            <span>Yes</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="lateRadio"
-                              checked={tempStatus !== 'Late'}
-                              onChange={() => {
-                                if (tempStatus === 'Late') setTempStatus('Present');
-                              }}
-                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                            />
-                            <span>No</span>
-                          </label>
-                        </div>
-                      </div> */}
 
                       {/* Half Day (Yes/No radio) */}
                       <div>
@@ -2757,23 +2734,44 @@ const AttendanceDaily = () => {
               </div>
 
               {/* Footer */}
-              <div className="flex items-center justify-end gap-2 p-4 border-t bg-gray-50">
-                <button
-                  onClick={() => {
-                    setIsSlidePanelOpen(false);
-                    setSelectedEmployee(null);
-                  }}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveFromSlidePanel}
-                  className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
-                >
-                  <CheckCircle size={16} />
-                  Save
-                </button>
+              <div className="border-t bg-gray-50">
+                {/* Inline save error */}
+                {saveError && (
+                  <div className="flex items-start gap-2 px-4 pt-3 pb-0">
+                    <X size={14} className="text-red-500 mt-0.5 shrink-0" />
+                    <p className="text-xs text-red-600 font-medium leading-snug">{saveError}</p>
+                  </div>
+                )}
+                <div className="flex items-center justify-end gap-2 p-4">
+                  <button
+                    onClick={() => {
+                      setIsSlidePanelOpen(false);
+                      setSelectedEmployee(null);
+                      setSaveError(null);
+                    }}
+                    disabled={isSaving}
+                    className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors font-medium disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveFromSlidePanel}
+                    disabled={isSaving}
+                    className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded font-semibold flex items-center gap-1.5 transition-colors shadow-sm min-w-[80px] justify-center"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 size={15} className="animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle size={16} />
+                        Save
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           )}

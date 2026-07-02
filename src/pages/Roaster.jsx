@@ -95,6 +95,8 @@ const Roster = () => {
     const [syncing, setSyncing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDepartment, setSelectedDepartment] = useState('ALL');
+    const [currentPage, setCurrentPage] = useState(1);
+    const ROWS_PER_PAGE = 15;
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
     const [isSlidePanelOpen, setIsSlidePanelOpen] = useState(false);
@@ -321,6 +323,11 @@ const Roster = () => {
             fetchRosterData();
         }
     }, [currentWeekStart, dateRange, viewMode, employees]);
+
+    // Reset to page 1 whenever search / department filter / view changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, selectedDepartment, viewMode]);
 
     const fetchEmployees = async () => {
         try {
@@ -610,7 +617,7 @@ const Roster = () => {
         }
 
         const startStr = formatDate(firstAssigned, 'yyyy-MM-dd');
-        const endStr   = lastAssigned ? formatDate(lastAssigned, 'yyyy-MM-dd') : startStr;
+        const endStr = lastAssigned ? formatDate(lastAssigned, 'yyyy-MM-dd') : startStr;
 
         const confirmed = window.confirm(
             `Delete ALL roster entries for ${employee.name_as_per_aadhar || employee.employee_id}\nfrom ${startStr} to ${endStr}?\n\nThis action cannot be undone.`
@@ -793,6 +800,66 @@ const Roster = () => {
         return matchesSearch && matchesDept;
     });
 
+    // Reset to page 1 when filters or view changes
+    const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / ROWS_PER_PAGE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const pagedEmployees = filteredEmployees.slice(
+        (safeCurrentPage - 1) * ROWS_PER_PAGE,
+        safeCurrentPage * ROWS_PER_PAGE
+    );
+
+    // Pagination helpers
+    const handlePageChange = (page) => setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+
+    // Pagination controls component (rendered below each table)
+    const PaginationBar = () => (
+        filteredEmployees.length > ROWS_PER_PAGE ? (
+            <div className="flex items-center justify-between px-3 py-2 border-t border-gray-200 bg-gray-50 text-[10px] text-gray-500">
+                <span>{filteredEmployees.length} employees &bull; Page {safeCurrentPage} of {totalPages}</span>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={() => handlePageChange(safeCurrentPage - 1)}
+                        disabled={safeCurrentPage === 1}
+                        className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+                    >
+                        &#8249; Prev
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter(p => p === 1 || p === totalPages || Math.abs(p - safeCurrentPage) <= 1)
+                        .reduce((acc, p, idx, arr) => {
+                            if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
+                            acc.push(p);
+                            return acc;
+                        }, [])
+                        .map((p, idx) =>
+                            p === '...' ? (
+                                <span key={`ellipsis-${idx}`} className="px-1">…</span>
+                            ) : (
+                                <button
+                                    key={p}
+                                    onClick={() => handlePageChange(p)}
+                                    className={`px-2 py-0.5 rounded border font-semibold transition-colors ${p === safeCurrentPage
+                                        ? 'bg-indigo-600 text-white border-indigo-600'
+                                        : 'border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                >
+                                    {p}
+                                </button>
+                            )
+                        )
+                    }
+                    <button
+                        onClick={() => handlePageChange(safeCurrentPage + 1)}
+                        disabled={safeCurrentPage === totalPages}
+                        className="px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+                    >
+                        Next &#8250;
+                    </button>
+                </div>
+            </div>
+        ) : null
+    );
+
     // Handle date range change
     const handleDateRangeChange = (type, value) => {
         const newFromDate = type === 'from' ? new Date(value) : dateRange.fromDate;
@@ -817,7 +884,7 @@ const Roster = () => {
     };
 
     return (
-        <div className="p-3 pl-7 pr-5">
+        <div className="p-3 pl-7 pr-5 pd-0">
             {/* Header */}
             <div className="flex justify-between items-center mb-3">
                 <div>
@@ -1066,7 +1133,7 @@ const Roster = () => {
             {/* Roster Table - Weekly View */}
             {viewMode === 'weekly' ? (
                 <div className="bg-white border border-gray-200 overflow-hidden">
-                    <div className="overflow-x-auto overflow-y-auto max-h-[72vh]">
+                    <div className="overflow-x-auto overflow-y-auto max-h-[67vh]">
                         <table className="w-full text-xs relative border-collapse">
                             <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20">
                                 <tr>
@@ -1098,7 +1165,7 @@ const Roster = () => {
                                         </td>
                                     </tr>
                                 ) : filteredEmployees.length > 0 ? (
-                                    filteredEmployees.map((employee) => {
+                                    pagedEmployees.map((employee) => {
                                         // Get all shifts for this employee in the week
                                         const weekDays = [];
                                         for (let i = 0; i < 7; i++) {
@@ -1229,6 +1296,7 @@ const Roster = () => {
                             </tbody>
                         </table>
                     </div>
+                    <PaginationBar />
                 </div>
             ) : (
                 /* Date Range View - Original Table with days as columns */
@@ -1278,7 +1346,7 @@ const Roster = () => {
                                         </td>
                                     </tr>
                                 ) : filteredEmployees.length > 0 ? (
-                                    filteredEmployees.map((employee) => (
+                                    pagedEmployees.map((employee) => (
                                         <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
                                             <td className="sticky left-0 bg-white hover:bg-gray-50 z-10 px-2 py-1.5 border-r border-gray-200">
                                                 <div className="flex items-center gap-1.5">
@@ -1338,6 +1406,7 @@ const Roster = () => {
                             </tbody>
                         </table>
                     </div>
+                    <PaginationBar />
                 </div>
             )}
 
