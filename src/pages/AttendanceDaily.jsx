@@ -189,7 +189,7 @@ const isLatePunch = (utcDateStr) => {
 // Status colors and labels - compact version
 const STATUS_CONFIG = {
   'Present': { color: 'bg-green-100 text-green-700', label: 'P', fullLabel: 'Present', bgColor: 'bg-green-200' },
-  'Late': { color: 'bg-orange-100 text-orange-700', label: 'L', fullLabel: 'Late', bgColor: 'bg-orange-200' },
+  'Late': { color: 'bg-orange-100 text-orange-700', label: 'L', fullLabel: 'Late', bgColor: 'bg-orange-200/60' },
   'Absent': { color: 'bg-red-100 text-red-700', label: 'A', fullLabel: 'Absent', bgColor: 'bg-red-200' },
   'Half Day': { color: 'bg-yellow-100 text-yellow-700', label: 'H', fullLabel: 'Half Day', bgColor: 'bg-yellow-200' },
   'Holiday': { color: 'bg-purple-100 text-purple-700', label: 'Hol', fullLabel: 'Holiday', bgColor: 'bg-purple-200' },
@@ -215,6 +215,12 @@ const AttendanceDaily = () => {
   const [selectedDate, setSelectedDate] = useState(todayDate);
   const [employeesData, setEmployeesData] = useState([]); // Store employees table data
   const [showUnmatched, setShowUnmatched] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset page to 1 on filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedStore, showUnmatched, selectedDate]);
 
   const handleDateChange = (dateStr) => {
     if (!dateStr) return;
@@ -1118,8 +1124,39 @@ const AttendanceDaily = () => {
       };
 
       if (manualPunches) {
-        const metrics = calculateMetricsFromManualPunches(manualPunches, date);
-        updateData.manual_punches = manualPunches;
+        let existingApi = {};
+        if (existingRecord?.manual_punches) {
+          if (existingRecord.manual_punches.api && typeof existingRecord.manual_punches.api === 'object') {
+            existingApi = existingRecord.manual_punches.api;
+          }
+        }
+
+        const finalManualPunches = {
+          api: existingApi,
+          manual: {}
+        };
+
+        const manualKeys = Object.keys(manualPunches).filter(k =>
+          k !== 'is_manual' &&
+          k !== 'manual_override' &&
+          k !== 'absent' &&
+          k !== 'api' &&
+          k !== 'manual'
+        );
+
+        if (manualPunches.absent) {
+          finalManualPunches.manual = { absent: true };
+        } else {
+          manualKeys.forEach(key => {
+            const val = manualPunches[key];
+            if (val !== undefined && val !== null) {
+              finalManualPunches.manual[key] = val;
+            }
+          });
+        }
+
+        const metrics = calculateMetricsFromManualPunches(finalManualPunches.manual, date);
+        updateData.manual_punches = finalManualPunches;
         updateData.in_time = metrics.in_time;
         updateData.out_time = metrics.out_time;
         updateData.punch_miss = metrics.punch_miss;
@@ -1256,8 +1293,15 @@ const AttendanceDaily = () => {
     setTempOutTime(formatInputVal(outTime) || `${date}T18:00`);
 
     // Populate manual punches state
-    let punchesObj = fullRecord?.manual_punches || {};
-    const activePunches = Object.values(punchesObj).filter(Boolean);
+    let punchesObj = {};
+    if (fullRecord?.manual_punches) {
+      if (fullRecord.manual_punches.manual && typeof fullRecord.manual_punches.manual === 'object') {
+        punchesObj = fullRecord.manual_punches.manual;
+      } else {
+        punchesObj = fullRecord.manual_punches;
+      }
+    }
+    const activePunches = Object.values(punchesObj).filter(v => v && v !== '' && typeof v === 'string');
 
     // If no manual punches exist, check if we can populate from punch_log
     if (activePunches.length === 0 && fullRecord?.punch_log && fullRecord.punch_log !== '-') {
@@ -1429,14 +1473,22 @@ const AttendanceDaily = () => {
   // Filter employees
   const filteredEmployees = (() => {
     // 1. Get employees with logs (matched or unmatched)
-    const baseList = employees.filter(emp => {
-      const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.id?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStore = selectedStore === 'ALL' || emp.store_name === selectedStore;
-      const isMatched = isEmployeeInTable(emp.id);
-      const matchesFilterMode = showUnmatched ? !isMatched : isMatched;
-      return matchesSearch && matchesStore && matchesFilterMode;
-    });
+    const baseList = employees
+      .map(emp => {
+        const empProfile = employeesData.find(e => e.employee_id === emp.id || e.id === emp.id);
+        return {
+          ...emp,
+          name: empProfile ? empProfile.name_as_per_aadhar : emp.name
+        };
+      })
+      .filter(emp => {
+        const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          emp.id?.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStore = selectedStore === 'ALL' || emp.store_name === selectedStore;
+        const isMatched = isEmployeeInTable(emp.id);
+        const matchesFilterMode = showUnmatched ? !isMatched : isMatched;
+        return matchesSearch && matchesStore && matchesFilterMode;
+      });
 
     // 2. If showing verified (showUnmatched is false), append remaining employees from employees table
     if (!showUnmatched) {
@@ -1473,6 +1525,63 @@ const AttendanceDaily = () => {
 
     return baseList;
   })();
+
+  const pageSize = 15;
+  const totalPages = Math.ceil(filteredEmployees.length / pageSize);
+  const activePage = Math.min(currentPage, Math.max(1, totalPages));
+  const paginatedEmployees = filteredEmployees.slice((activePage - 1) * pageSize, activePage * pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedStore, currentMonth]);
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+    return (
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs">
+        <div className="text-gray-500">
+          Showing <span className="font-semibold">{(activePage - 1) * pageSize + 1}</span> to <span className="font-semibold">{Math.min(activePage * pageSize, filteredEmployees.length)}</span> of <span className="font-semibold">{filteredEmployees.length}</span> employees
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            disabled={activePage === 1}
+            onClick={() => setCurrentPage(activePage - 1)}
+            className="px-2.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium rounded shadow-sm"
+          >
+            Previous
+          </button>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(page => page === 1 || page === totalPages || Math.abs(page - activePage) <= 1)
+              .map((page, index, arr) => {
+                const showEllipsis = index > 0 && page - arr[index - 1] > 1;
+                return (
+                  <React.Fragment key={page}>
+                    {showEllipsis && <span className="text-gray-400 px-1">...</span>}
+                    <button
+                      onClick={() => setCurrentPage(page)}
+                      className={`w-7 h-7 flex items-center justify-center font-medium rounded transition-colors ${activePage === page
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-white border border-gray-300 hover:bg-gray-50 text-gray-700'
+                        }`}
+                    >
+                      {page}
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+          </div>
+          <button
+            disabled={activePage === totalPages}
+            onClick={() => setCurrentPage(activePage + 1)}
+            className="px-2.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium rounded shadow-sm"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const days = getDaysInMonth(currentMonth);
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -1578,11 +1687,7 @@ const AttendanceDaily = () => {
             <Calendar size={18} />
             {viewMode === 'calendar' ? 'Daily Attendance Calendar' : 'Daily Attendance Sheet'}
           </h1>
-          <p className="text-gray-500 text-[11px] mt-0.5">
-            {viewMode === 'calendar'
-              ? 'View and manage employee attendance in calendar format'
-              : `View and manage employee attendance for ${new Date(selectedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}`}
-          </p>
+
         </div>
         <div className="flex gap-2">
           {syncing && (
@@ -1643,7 +1748,7 @@ const AttendanceDaily = () => {
 
           <button
             onClick={() => setShowUnmatched(prev => !prev)}
-            className={`flex h-10 items-center gap-1.5 px-3 py-1.5 font-medium text-xs transition-colors shadow-sm border rounded-md active:scale-95 transition-all ${showUnmatched
+            className={`flex h-10 items-center gap-1.5 px-3 py-1.5 font-medium text-xs transition-colors  rounded-md active:scale-95 transition-all ${showUnmatched
               ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
               : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
               }`}
@@ -1667,7 +1772,7 @@ const AttendanceDaily = () => {
       </div>
 
       {/* Status Legend - Compact */}
-      <div className="bg-gray-100 rounded-md p-2 mb-3">
+      {/* <div className="bg-gray-100 rounded-md p-2 mb-3">
         <div className="flex flex-wrap gap-3">
           <span className="text-[11px] font-medium text-gray-700">Status:</span>
           {Object.entries(STATUS_CONFIG).map(([key, config]) => (
@@ -1681,12 +1786,12 @@ const AttendanceDaily = () => {
             <span className="text-[10px] text-orange-600 font-medium">Late (After 10:10 AM IST)</span>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Filter Section - Compact */}
-      <div className="bg-white rounded-md border border-gray-200 p-2 mb-3">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <div>
+      <div className="bg-white rounded-md p-2 mb-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex-1 min-w-[200px]">
             <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Search Employee</label>
             <div className="relative">
               <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -1700,7 +1805,7 @@ const AttendanceDaily = () => {
             </div>
           </div>
 
-          <div>
+          <div className="min-w-[150px]">
             <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Filter by Store</label>
             <div className="relative">
               <select
@@ -1717,8 +1822,8 @@ const AttendanceDaily = () => {
             </div>
           </div>
 
-          <div className='ml-10'>
-            <label className="block w-[13vw] text-[10px] font-medium text-gray-500 mb-0.5 text-center">Month</label>
+          <div>
+            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Month</label>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => changeMonth(-1)}
@@ -1743,7 +1848,7 @@ const AttendanceDaily = () => {
       {viewMode === 'calendar' ? (
         /* Calendar View - Compact */
         <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)]">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(92vh-220px)]">
             <table className="w-full text-xs relative border-collapse">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20 shadow-sm">
                 <tr>
@@ -1782,10 +1887,12 @@ const AttendanceDaily = () => {
                       </button>
                     </td>
                   </tr>
-                ) : filteredEmployees.length > 0 ? (
-                  filteredEmployees.map((employee) => {
+                ) : paginatedEmployees.length > 0 ? (
+                  paginatedEmployees.map((employee) => {
                     let presentCount = 0, lateCount = 0, absentCount = 0, halfDayCount = 0;
                     const isInEmployeesTable = isEmployeeInTable(employee.id);
+                    const employeeProfile = employeesData.find(e => e.employee_id === employee.id || e.id === employee.id);
+                    const candidatePhoto = employeeProfile?.candidate_photo || employee.candidate_photo;
 
                     return (
                       <tr
@@ -1793,12 +1900,25 @@ const AttendanceDaily = () => {
                         className={`transition-colors ${employee.isRemaining ? 'bg-blue-100 hover:bg-blue-200' : isInEmployeesTable ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 bg-white'}`}
                       >
                         <td className={`sticky left-0 px-2 py-1.5 border-r z-10 ${employee.isRemaining ? 'bg-blue-100' : isInEmployeesTable ? 'bg-blue-50' : 'bg-white'}`}>
-                          <div>
-                            <p className="text-xs font-medium text-gray-900">{employee.name}</p>
-                            <p className="text-[9px] text-gray-500">{employee.id}</p>
-                            {isInEmployeesTable && (
-                              <span className="text-[8px] text-blue-600 font-medium">✓ Verified</span>
+                          <div className="flex items-center gap-1.5">
+                            {candidatePhoto ? (
+                              <img
+                                src={candidatePhoto}
+                                alt={employee.name}
+                                className="w-6 h-6 rounded-full object-cover border border-gray-200 flex-shrink-0"
+                              />
+                            ) : (
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${employee.isRemaining ? 'bg-blue-200 text-blue-800' : isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                                {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
+                              </div>
                             )}
+                            <div>
+                              <p className="text-xs font-medium text-gray-900">{employee.name}</p>
+                              <p className="text-[9px] text-gray-500">{employee.id}</p>
+                              {isInEmployeesTable && (
+                                <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         {days.map((day, idx) => {
@@ -1821,9 +1941,16 @@ const AttendanceDaily = () => {
                                 <div className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${config.color} font-medium text-[10px] transition-transform hover:scale-105`}>
                                   {config.label}
                                 </div>
-                                {attendance?.manual_punches && Object.values(attendance.manual_punches).filter(Boolean).length > 0 && (
-                                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-purple-500 rounded-full border border-white" title="Manual punch log" />
-                                )}
+                                {(() => {
+                                  if (!attendance?.manual_punches) return null;
+                                  const punches = attendance.manual_punches.manual && typeof attendance.manual_punches.manual === 'object'
+                                    ? attendance.manual_punches.manual
+                                    : attendance.manual_punches;
+                                  const hasManual = Object.values(punches).some(v => v && v !== '' && typeof v === 'string');
+                                  return hasManual ? (
+                                    <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-purple-500 rounded-full border border-white" title="Manual punch log" />
+                                  ) : null;
+                                })()}
                               </div>
                               {attendance.late_minute > 0 && (
                                 <div className="text-[8px] text-gray-400 mt-0.5">
@@ -1849,12 +1976,13 @@ const AttendanceDaily = () => {
               </tbody>
             </table>
           </div>
+          {renderPagination()}
         </div>
       ) : (
         /* Daily List View - Compact */
         <>
-          <div className="bg-white rounded-md border border-gray-200 overflow-hidden shadow-sm">
-            <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)]">
+          <div className="bg-white rounded-md overflow-hidden shadow-sm">
+            <div className="overflow-x-auto overflow-y-auto max-h-[calc(87vh-220px)]">
               <table className="w-full text-xs relative border-collapse">
                 <thead className=" border-b border-gray-200 sticky top-0 z-10 shadow-sm">
                   <tr>
@@ -1864,8 +1992,8 @@ const AttendanceDaily = () => {
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[80px] z-10">Status</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">In Time (IST)</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[90px] z-10">Out Time (IST)</th>
-                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[180px] z-10">Punch Logs</th>
-                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[180px] z-10">Punch Logs & Manual Log</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[180px] z-10">Manual Log & Punch Log</th>
+                    <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[120px] z-10">Lunch Hours</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[70px] z-10">Hours</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[60px] z-10">Late</th>
                     <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-[50px] z-10">Action</th>
@@ -1888,8 +2016,8 @@ const AttendanceDaily = () => {
                         <button onClick={syncDeviceLogs} className="px-3 py-1 bg-indigo-600 text-white rounded text-xs">Retry</button>
                       </td>
                     </tr>
-                  ) : filteredEmployees.length > 0 ? (
-                    filteredEmployees.map((employee, idx) => {
+                  ) : paginatedEmployees.length > 0 ? (
+                    paginatedEmployees.map((employee, idx) => {
                       const attendance = getAttendanceForDate(employee.id, selectedDate);
                       let status = attendance.status || 'Absent';
                       const config = STATUS_CONFIG[status] || STATUS_CONFIG['Absent'];
@@ -1898,17 +2026,117 @@ const AttendanceDaily = () => {
                       // Get punch_log as it is from database - DO NOT modify or append manual punches
                       let punchLogText = attendance.punch_log || '-';
 
-                      // Format manual punches as pipe-separated values (e.g., "10:10 | 11:00")
+                      // Format manual and api punches
                       let manualPunchesDisplay = '-';
-                      if (attendance?.manual_punches) {
-                        const punches = attendance.manual_punches;
-                        // Get all punch times and filter out empty values and internal flags
-                        const times = ["1", "2", "3", "4", "5"]
-                          .map(key => punches[key])
-                          .filter(value => value && value !== '' && typeof value === 'string');
+                      let apiPunchesDisplay = '-';
 
-                        if (times.length > 0) {
-                          manualPunchesDisplay = times.join(' | ');
+                      // Helper to parse times in "10:05 AM" or "10:05" formats into minutes for sorting
+                      const parseToMinutes = (tStr) => {
+                        try {
+                          const clean = tStr.trim().toUpperCase();
+                          const isPM = clean.endsWith('PM');
+                          const isAM = clean.endsWith('AM');
+                          let timePart = clean;
+                          if (isPM || isAM) {
+                            timePart = clean.slice(0, -2).trim();
+                          }
+                          const [hStr, mStr] = timePart.split(':');
+                          let h = parseInt(hStr, 10);
+                          const m = parseInt(mStr, 10) || 0;
+                          if (isPM && h < 12) h += 12;
+                          if (isAM && h === 12) h = 0;
+                          return h * 60 + m;
+                        } catch (e) {
+                          return 0;
+                        }
+                      };
+
+                      if (attendance?.manual_punches) {
+                        const punchesObj = attendance.manual_punches;
+
+                        if (punchesObj.manual || punchesObj.api) {
+                          // New structure
+                          if (punchesObj.manual && typeof punchesObj.manual === 'object') {
+                            const rawManual = Object.values(punchesObj.manual)
+                              .filter(value => value && value !== '' && typeof value === 'string');
+                            if (rawManual.length > 0) {
+                              const sortedManual = [...rawManual].sort((a, b) => parseToMinutes(a) - parseToMinutes(b));
+                              manualPunchesDisplay = sortedManual.join(' | ');
+                            }
+                          }
+
+                          if (punchesObj.api && typeof punchesObj.api === 'object') {
+                            const rawApi = Object.values(punchesObj.api)
+                              .filter(value => value && value !== '' && typeof value === 'string');
+                            if (rawApi.length > 0) {
+                              const sortedApi = [...rawApi].sort((a, b) => parseToMinutes(a) - parseToMinutes(b));
+                              apiPunchesDisplay = sortedApi.join(' | ');
+                            }
+                          }
+                        } else {
+                          // Old structure: direct keys
+                          const rawManual = ["1", "2", "3", "4", "5"]
+                            .map(key => punchesObj[key])
+                            .filter(value => value && value !== '' && typeof value === 'string');
+                          if (rawManual.length > 0) {
+                            const sortedManual = [...rawManual].sort((a, b) => parseToMinutes(a) - parseToMinutes(b));
+                            manualPunchesDisplay = sortedManual.join(' | ');
+                          }
+                        }
+                      }
+
+                      // Function to render colored punch logs with even/odd logic (1st green, 2nd red, 3rd green, 4th red, etc.)
+                      const renderColoredPunches = (punchLogStr) => {
+                        if (!punchLogStr || punchLogStr === '-') {
+                          return <span className="text-gray-500 font-medium">-</span>;
+                        }
+
+                        // Split by ' | ' or '|' separator
+                        const punches = punchLogStr.split(/\s*\|\s*/).filter(p => p.trim());
+
+                        if (punches.length === 0) {
+                          return <span className="text-gray-500 font-medium">-</span>;
+                        }
+
+                        return (
+                          <div className="flex flex-wrap items-center justify-center gap-0.5">
+                            {punches.map((punch, index) => {
+                              // 1st punch (index 0) = green, 2nd (index 1) = red, 3rd (index 2) = green, etc.
+                              const isEven = index % 2 === 0;
+                              const colorClass = isEven ? 'text-green-600' : 'text-red-600';
+                              const bgClass = isEven ? 'bg--50' : 'bg--50';
+
+                              return (
+                                <span
+                                  key={index}
+                                  className={`${colorClass} ${bgClass} px-1.5 py-0.5 rounded font-mono text-[10px] font-semibold`}
+                                >
+                                  {punch.trim()}
+                                  {index < punches.length - 1 && (
+                                    <span className="text-gray-400 mx-0.5 font-normal">|</span>
+                                  )}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        );
+                      };
+
+                      const employeeProfile = employeesData.find(e => e.employee_id === employee.id);
+                      const candidatePhoto = employeeProfile?.candidate_photo || employee.candidate_photo;
+
+                      let totalPunches = 0;
+                      if (attendance?.manual_punches) {
+                        const punchesObj = attendance.manual_punches;
+                        if (punchesObj.manual || punchesObj.api) {
+                          const manualCount = punchesObj.manual ? Object.values(punchesObj.manual).filter(v => v && v !== '' && typeof v === 'string').length : 0;
+                          const apiCount = punchesObj.api ? Object.values(punchesObj.api).filter(v => v && v !== '' && typeof v === 'string').length : 0;
+                          totalPunches = manualCount + apiCount;
+                        } else {
+                          const oldManualCount = ["1", "2", "3", "4", "5"]
+                            .map(key => punchesObj[key])
+                            .filter(v => v && v !== '' && typeof v === 'string').length;
+                          totalPunches = oldManualCount;
                         }
                       }
 
@@ -1917,24 +2145,33 @@ const AttendanceDaily = () => {
                           key={employee.id}
                           className={`transition-colors ${employee.isRemaining ? 'bg-blue-100 hover:bg-blue-200' : isInEmployeesTable ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 bg-white'}`}
                         >
-                          <td className="px-2 py-1.5 text-[10px] text-gray-500 font-medium">{idx + 1}</td>
+                          <td className="px-2 py-1.5 text-[10px] text-gray-500 font-medium">{(activePage - 1) * pageSize + idx + 1}</td>
                           <td className="px-2 py-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold ${employee.isRemaining ? 'bg-blue-200 text-blue-800' : isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
-                                {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
-                              </div>
-                              <div>
-                                <p className="text-xs font-medium text-gray-900">{employee.name}</p>
-                                <p className="text-[9px] text-gray-500">{employee.id}</p>
-                                {isInEmployeesTable && (
-                                  <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
+                            <div className="flex items-center justify-between w-full gap-1.5">
+                              <div className="flex items-center gap-1.5">
+                                {candidatePhoto ? (
+                                  <img
+                                    src={candidatePhoto}
+                                    alt={employee.name}
+                                    className="w-6 h-6 rounded-full object-cover border border-gray-200 flex-shrink-0"
+                                  />
+                                ) : (
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${employee.isRemaining ? 'bg-blue-200 text-blue-800' : isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                                    {employee.name ? employee.name.charAt(0).toUpperCase() : '?'}
+                                  </div>
                                 )}
-                                {attendance?.manual_punches && Object.values(attendance.manual_punches).filter(v => v && v !== '' && typeof v === 'string').length > 0 && (
-                                  <span className="inline-block mt-0.5 px-1 py-0.5 bg-purple-50 text-purple-600 rounded text-[7px] font-bold border border-purple-100">
-                                    ✍ Manual ({Object.values(attendance.manual_punches).filter(v => v && v !== '' && typeof v === 'string').length})
-                                  </span>
-                                )}
+                                <div>
+                                  <p className="text-xs font-medium text-gray-900">{employee.name}</p>
+                                  <p className="text-[9px] text-gray-500">{employee.id}</p>
+                                  {isInEmployeesTable && (
+                                    <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
+                                  )}
+                                </div>
                               </div>
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 mr-1 ${totalPunches % 2 === 1 ? 'bg-green-500' : 'bg-red-500'}`}
+                                title={`${totalPunches} punch(es)`}
+                              />
                             </div>
                           </td>
                           <td className="px-2 py-1.5 text-[10px] text-gray-600">{employee.store_name || '-'}</td>
@@ -1949,15 +2186,28 @@ const AttendanceDaily = () => {
                           <td className="px-2 py-1.5 text-center text-[10px] font-mono">
                             {attendance.out_time ? formatTimeIST(attendance.out_time) : '-'}
                           </td>
-                          <td className="px-2 py-1.5 text-center text-[10px] font-mono max-w-[220px] truncate text-gray-500 font-medium" title={punchLogText}>
-                            {punchLogText}
+                          <td className="px-2 py-1.5 text-center max-w-[200px]">
+                            {apiPunchesDisplay === '-' && manualPunchesDisplay === '-' ? (
+                              <span className="text-gray-400">-</span>
+                            ) : (
+                              <div className="flex flex-col gap-1 items-center justify-center">
+                                {apiPunchesDisplay !== '-' && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[8px] font-bold text-gray-500 bg-gray-100 px-1 py-0.5 rounded leading-none">API</span>
+                                    {renderColoredPunches(apiPunchesDisplay)}
+                                  </div>
+                                )}
+                                {manualPunchesDisplay !== '-' && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[8px] font-bold text-purple-700 bg-purple-50 px-1 py-0.5 rounded leading-none">MNL</span>
+                                    {renderColoredPunches(manualPunchesDisplay)}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </td>
-                          <td className="px-2 py-1.5 text-center text-[10px] font-mono max-w-[180px] truncate" title={manualPunchesDisplay}>
-                            {manualPunchesDisplay !== '-' ? (
-                              <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200 font-mono text-[10px]">
-                                {manualPunchesDisplay}
-                              </span>
-                            ) : '-'}
+                          <td className="px-2 py-1.5 text-center text-[10px] font-mono">
+                            {attendance.standard_lunch || '-'}
                           </td>
                           <td className="px-2 py-1.5 text-center text-[10px] font-semibold">{attendance.working_hour || '-'}</td>
                           <td className="px-2 py-1.5 text-center text-[10px]">
@@ -1989,6 +2239,8 @@ const AttendanceDaily = () => {
                 </tbody>
               </table>
             </div>
+
+            {renderPagination()}
           </div>
 
         </>
@@ -2068,7 +2320,7 @@ const AttendanceDaily = () => {
                       </div>
 
                       {/* Mark Attendance By */}
-                      <div>
+                      {/* <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mark Attendance By</label>
                         <div className="flex items-center gap-4 mt-2">
                           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
@@ -2080,7 +2332,7 @@ const AttendanceDaily = () => {
                             <span>Month</span>
                           </label>
                         </div>
-                      </div>
+                      </div> */}
 
                       {/* Year */}
                       <div>
@@ -2182,7 +2434,7 @@ const AttendanceDaily = () => {
                       </div>
 
                       {/* Late (Yes/No radio) */}
-                      <div>
+                      {/* <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Late</label>
                         <div className="flex items-center gap-4 mt-2">
                           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
@@ -2208,7 +2460,7 @@ const AttendanceDaily = () => {
                             <span>No</span>
                           </label>
                         </div>
-                      </div>
+                      </div> */}
 
                       {/* Half Day (Yes/No radio) */}
                       <div>
@@ -2297,19 +2549,64 @@ const AttendanceDaily = () => {
                       </div>
                     </div>
 
-                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Punch Logs (IST)</h4>
-                      {selectedEmployee.attendance?.punch_log ? (
-                        <div className="bg-white rounded p-3 border border-gray-200 h-[140px] overflow-y-auto">
-                          <p className="text-xs font-mono text-gray-700 whitespace-pre-line leading-relaxed">
-                            {selectedEmployee.attendance.punch_log}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="bg-white rounded p-3 border border-gray-200 h-[140px] flex items-center justify-center text-gray-400 text-xs">
-                          No punch logs recorded
-                        </div>
-                      )}
+                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-100 space-y-4">
+                      {/* Punch Logs Section */}
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Punch Logs (IST)</h4>
+                        {selectedEmployee.attendance?.punch_log ? (
+                          <div className="bg-white rounded p-3 border border-gray-200 h-[120px] overflow-y-auto">
+                            <p className="text-xs font-mono text-gray-700 whitespace-pre-line leading-relaxed">
+                              {selectedEmployee.attendance.punch_log}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="bg-white rounded p-3 border border-gray-200 h-[120px] flex items-center justify-center text-gray-400 text-xs">
+                            No punch logs recorded
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Manual Punches Section */}
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Manual Punches (Database)</h4>
+                        {(() => {
+                          const punchesObj = selectedEmployee.attendance?.manual_punches;
+                          if (!punchesObj) {
+                            return (
+                              <div className="bg-white rounded p-3 border border-gray-200 flex items-center justify-center text-gray-400 text-xs h-[80px]">
+                                No manual punches recorded
+                              </div>
+                            );
+                          }
+
+                          // Extract actual punches
+                          const punches = punchesObj.manual && typeof punchesObj.manual === 'object'
+                            ? punchesObj.manual
+                            : punchesObj;
+                          
+                          const activePunches = Object.entries(punches)
+                            .filter(([key, val]) => val && val !== '' && typeof val === 'string' && key !== 'is_manual')
+                            .sort((a, b) => a[1].localeCompare(b[1]));
+
+                          if (activePunches.length === 0) {
+                            return (
+                              <div className="bg-white rounded p-3 border border-gray-200 flex items-center justify-center text-gray-400 text-xs h-[80px]">
+                                No manual punches recorded
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="bg-white rounded p-3 border border-gray-200 overflow-y-auto max-h-[120px] flex flex-wrap gap-2">
+                              {activePunches.map(([key, time]) => (
+                                <span key={key} className="inline-flex items-center px-2 py-1 bg-purple-50 border border-purple-200 text-purple-700 rounded-md text-xs font-mono font-medium">
+                                  Punch {key}: {time}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </div>
                 </div>

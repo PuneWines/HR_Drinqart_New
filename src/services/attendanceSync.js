@@ -42,6 +42,17 @@ const formatSecsToHrsMins = (totalSecs) => {
     return `${hrs}h ${mins}m`;
 };
 
+const parseTimeToSeconds = (timeStr) => {
+    if (!timeStr || timeStr === '-') return 0;
+    const parts = timeStr.split(':').map(Number);
+    if (parts.length === 3) {
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    } else if (parts.length === 2) {
+        return parts[0] * 3600 + parts[1] * 60;
+    }
+    return 0;
+};
+
 /**
  * Fetch logs and metadata, aggregate, and sync/upsert to Supabase
  * @param {number} month - 1-based month (1-12)
@@ -54,6 +65,7 @@ export const syncMonthlyAttendanceFromApi = async (month, year, device) => {
         return [];
     }
 
+    /*
     // 1. Fetch metadata in parallel
     const [joiningRes, masterRes] = await Promise.all([
         fetch(JOINING_API_URL),
@@ -201,6 +213,99 @@ export const syncMonthlyAttendanceFromApi = async (month, year, device) => {
             serial_no: device.serial,
             present_days: agg.presentDays,
             absent_days: absentDays,
+            punch_miss: agg.punchMissDays,
+            late_days: agg.lateDays,
+            total_work_hours: formatSecsToHrsMins(agg.totalWorkSecs),
+            total_work_secs: agg.totalWorkSecs,
+            total_lunch_time: formatSecsToHrsMins(agg.totalLunchSecs),
+            total_lunch_secs: agg.totalLunchSecs,
+            holidays: totalSundays
+        };
+    });
+    */
+
+    // NEW LOGIC: Fetch from database table `attendance_logs` as SOURCE OF TRUTH
+    const startDay = '01';
+    const endDay = getDaysInMonth(month, year);
+    const paddedMonth = month.toString().padStart(2, '0');
+    const fromDate = `${year}-${paddedMonth}-${startDay}`;
+    const toDate = `${year}-${paddedMonth}-${endDay}`;
+
+    const { data: dbLogs, error: dbError } = await supabase
+        .from('attendance_logs')
+        .select('*')
+        .gte('attendance_date', fromDate)
+        .lte('attendance_date', toDate)
+        .eq('serial_number', device.serial);
+
+    if (dbError) {
+        console.error('Error fetching daily attendance logs from DB:', dbError);
+        throw dbError;
+    }
+
+    if (!dbLogs || dbLogs.length === 0) {
+        return [];
+    }
+
+    const monthlyAgg = {};
+    const totalSundays = getSundaysCount(month, year);
+    const totalDaysInMonth = getDaysInMonth(month, year);
+
+    dbLogs.forEach(row => {
+        const id = row.employee_id;
+        if (!id) return;
+
+        if (!monthlyAgg[id]) {
+            monthlyAgg[id] = {
+                employee_code: id,
+                employee_name: row.employee_name || 'Unknown',
+                designation: row.designation || '-',
+                store_name: row.store_name || '-',
+                device_id: row.device_id || '-',
+                serial_no: device.serial,
+                presentDays: 0,
+                absentDays: 0,
+                punchMissDays: 0,
+                lateDays: 0,
+                totalWorkSecs: 0,
+                totalLunchSecs: 0
+            };
+        }
+
+        const agg = monthlyAgg[id];
+
+        // Accumulate statistics
+        const status = row.status;
+        if (status === 'Present' || status === 'Late' || status === 'Half Day') {
+            agg.presentDays += 1;
+        } else if (status === 'Absent') {
+            agg.absentDays += 1;
+        }
+
+        if (status === 'Late' || (row.late_minute && row.late_minute > 0)) {
+            agg.lateDays += 1;
+        }
+
+        if (row.punch_miss === 'Yes' || row.punch_miss === true) {
+            agg.punchMissDays += 1;
+        }
+
+        agg.totalWorkSecs += parseTimeToSeconds(row.working_hour);
+        agg.totalLunchSecs += parseTimeToSeconds(row.standard_lunch);
+    });
+
+    const finalData = Object.values(monthlyAgg).map((agg) => {
+        return {
+            year: year,
+            month: monthNames[month - 1],
+            employee_code: agg.employee_code,
+            employee_name: agg.employee_name,
+            designation: agg.designation,
+            store_name: agg.store_name,
+            device_id: agg.device_id,
+            serial_no: agg.serial_no,
+            present_days: agg.presentDays,
+            absent_days: agg.absentDays,
             punch_miss: agg.punchMissDays,
             late_days: agg.lateDays,
             total_work_hours: formatSecsToHrsMins(agg.totalWorkSecs),

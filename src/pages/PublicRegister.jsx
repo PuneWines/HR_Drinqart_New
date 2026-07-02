@@ -1,8 +1,177 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { Upload, Image, User, CreditCard, BookOpen, FileText, X, CheckCircle, ArrowRight } from 'lucide-react'
+import { Upload, Image, User, CreditCard, BookOpen, FileText, X, CheckCircle, ArrowRight, Crop } from 'lucide-react'
 
 const STORAGE_BUCKET = 'employee_documents'
+
+const CropperModal = ({ isOpen, imageSrc, aspectRatio, onClose, onCrop, onSkip }) => {
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const maskRef = useRef(null);
+  const imgRef = useRef(null);
+
+  // Reset scale and offset when modal is opened or image changes
+  useEffect(() => {
+    if (isOpen) {
+      setScale(1);
+      setOffset({ x: 0, y: 0 });
+    }
+  }, [isOpen, imageSrc]);
+
+  if (!isOpen) return null;
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    setOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleTouchStart = (e) => {
+    if (e.touches.length !== 1) return;
+    setIsDragging(true);
+    setDragStart({ x: e.touches[0].clientX - offset.x, y: e.touches[0].clientY - offset.y });
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging || e.touches.length !== 1) return;
+    setOffset({ x: e.touches[0].clientX - dragStart.x, y: e.touches[0].clientY - dragStart.y });
+  };
+
+  const handleSave = () => {
+    if (!maskRef.current || !imgRef.current) return;
+
+    const maskRect = maskRef.current.getBoundingClientRect();
+    const imgRect = imgRef.current.getBoundingClientRect();
+
+    const scaleFactor = imgRef.current.naturalWidth / imgRect.width;
+
+    const x_crop = (maskRect.left - imgRect.left) * scaleFactor;
+    const y_crop = (maskRect.top - imgRect.top) * scaleFactor;
+    const w_crop = maskRect.width * scaleFactor;
+    const h_crop = maskRect.height * scaleFactor;
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = maskRect.width * 2;
+      canvas.height = maskRect.height * 2;
+      const ctx = canvas.getContext('2d');
+
+      ctx.drawImage(
+        imgRef.current,
+        x_crop, y_crop, w_crop, h_crop,
+        0, 0, canvas.width, canvas.height
+      );
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      onCrop(dataUrl);
+    } catch (e) {
+      console.error('Error cropping image:', e);
+      alert('Failed to crop image, using original file instead.');
+      onSkip();
+    }
+  };
+
+  const maskWidth = aspectRatio === 1.0 ? 220 : 320;
+  const maskHeight = 200;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4" onMouseUp={handleMouseUp} onMouseMove={handleMouseMove}>
+      <div className="bg-white max-w-lg w-full rounded-xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+          <h3 className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
+            <Crop size={16} className="text-indigo-600" />
+            Adjust and Crop Image
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-600 rounded transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-6 flex-1 flex flex-col items-center justify-center space-y-6 overflow-y-auto">
+          <p className="text-xs text-gray-500 text-center">
+            Drag to pan. Use the slider below to zoom.
+          </p>
+
+          <div className="relative w-full h-[300px] bg-slate-900 overflow-hidden flex items-center justify-center select-none rounded-lg border border-slate-800 cursor-move"
+               onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleMouseUp}
+               onMouseDown={handleMouseDown}>
+            
+            <img
+              ref={imgRef}
+              src={imageSrc}
+              alt="To Crop"
+              className="absolute pointer-events-none select-none max-w-none origin-center"
+              style={{
+                transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                width: aspectRatio === 1.0 ? '250px' : '350px',
+                height: 'auto',
+                transition: isDragging ? 'none' : 'transform 0.15s ease-out'
+              }}
+            />
+
+            <div
+              ref={maskRef}
+              className="absolute pointer-events-none border-2 border-dashed border-indigo-500 bg-transparent shadow-[0_0_0_9999px_rgba(0,0,0,0.65)]"
+              style={{
+                width: `${maskWidth}px`,
+                height: `${maskHeight}px`,
+                borderRadius: aspectRatio === 1.0 ? '50%' : '8px'
+              }}
+            />
+          </div>
+
+          <div className="w-full flex items-center gap-3">
+            <span className="text-xs text-gray-400 font-semibold">-</span>
+            <input
+              type="range"
+              min="1"
+              max="4"
+              step="0.05"
+              value={scale}
+              onChange={(e) => setScale(parseFloat(e.target.value))}
+              className="flex-1 accent-indigo-600 cursor-pointer"
+            />
+            <span className="text-xs text-gray-400 font-semibold">+</span>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50 gap-2">
+          <button
+            onClick={onSkip}
+            className="px-3.5 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition-colors"
+          >
+            Skip Crop
+          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-gray-300 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+            >
+              Crop & Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function PublicRegister() {
   const [submitted, setSubmitted] = useState(false)
@@ -36,6 +205,26 @@ export default function PublicRegister() {
     bankPassbook: null,
     resume: null
   })
+
+  const [cropModal, setCropModal] = useState({
+    isOpen: false,
+    imageSrc: '',
+    fieldName: '',
+    fileName: '',
+    fileType: '',
+    aspectRatio: 1.0,
+    originalFile: null
+  })
+
+  // Helper to convert cropped DataURL to File object
+  const dataURLtoFile = (dataurl, filename) => {
+    let arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+        bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, {type:mime});
+  }
 
   const [formData, setFormData] = useState({
     employee_id: '',
@@ -89,8 +278,46 @@ export default function PublicRegister() {
     }
 
     const previewUrl = URL.createObjectURL(file)
-    setFormData(prev => ({ ...prev, [fieldName]: file }))
-    setFilePreviews(prev => ({ ...prev, [fieldName]: previewUrl }))
+
+    const croppableFields = ['candidatePhoto', 'aadharFront', 'aadharBack', 'panCard', 'bankPassbook']
+    if (croppableFields.includes(fieldName) && file.type.startsWith('image/')) {
+      setCropModal({
+        isOpen: true,
+        imageSrc: previewUrl,
+        fieldName,
+        fileName: file.name,
+        fileType: file.type,
+        aspectRatio: fieldName === 'candidatePhoto' ? 1.0 : 1.6,
+        originalFile: file
+      })
+      e.target.value = '' // Clear input
+    } else {
+      setFormData(prev => ({ ...prev, [fieldName]: file }))
+      setFilePreviews(prev => ({ ...prev, [fieldName]: previewUrl }))
+    }
+  }
+
+  const handleCropComplete = (croppedDataUrl) => {
+    try {
+      const croppedFile = dataURLtoFile(croppedDataUrl, cropModal.fileName)
+      const previewUrl = URL.createObjectURL(croppedFile)
+      
+      setFormData(prev => ({ ...prev, [cropModal.fieldName]: croppedFile }))
+      setFilePreviews(prev => ({ ...prev, [cropModal.fieldName]: previewUrl }))
+    } catch (e) {
+      console.error('Error processing cropped file:', e)
+      // Fallback to original file
+      setFormData(prev => ({ ...prev, [cropModal.fieldName]: cropModal.originalFile }))
+      setFilePreviews(prev => ({ ...prev, [cropModal.fieldName]: cropModal.imageSrc }))
+    } finally {
+      setCropModal(prev => ({ ...prev, isOpen: false }))
+    }
+  }
+
+  const handleCropSkip = () => {
+    setFormData(prev => ({ ...prev, [cropModal.fieldName]: cropModal.originalFile }))
+    setFilePreviews(prev => ({ ...prev, [cropModal.fieldName]: cropModal.imageSrc }))
+    setCropModal(prev => ({ ...prev, isOpen: false }))
   }
 
   const handleRemoveFile = (fieldName) => {
@@ -709,6 +936,15 @@ export default function PublicRegister() {
 
         </form>
       </div>
+
+      <CropperModal
+        isOpen={cropModal.isOpen}
+        imageSrc={cropModal.imageSrc}
+        aspectRatio={cropModal.aspectRatio}
+        onClose={() => setCropModal(prev => ({ ...prev, isOpen: false }))}
+        onCrop={handleCropComplete}
+        onSkip={handleCropSkip}
+      />
     </div>
   )
 }

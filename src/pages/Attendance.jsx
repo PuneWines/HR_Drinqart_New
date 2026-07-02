@@ -19,10 +19,10 @@ const Attendance = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
             {/* Header Section */}
             <div className="bg-gray-100 border-gray-200 sticky top-0 z-20">
-                <div className="px-8 py-4">
+                <div className="px-8 py-3">
                     <div className="flex items-center justify-between">
                         <div>
                             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -51,7 +51,7 @@ const Attendance = () => {
 
 
             {/* Main Content */}
-            <div className="p-8 pt-2">
+            <div className="p-8 pt-2 flex-grow overflow-hidden">
                 {activeSubTab === 'daily' ? (
                     <Attendancedaily />
                 ) : (

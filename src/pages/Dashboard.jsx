@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, UserCheck, Clock, UserX, Briefcase, Calendar, TrendingUp, Award, PieChart, Filter, Search, AlertCircle } from 'lucide-react'
+import { Users, UserCheck, Clock, UserX, Briefcase, Calendar, TrendingUp, Award, PieChart, Filter, Search, AlertCircle, Eye } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 export default function Dashboard() {
@@ -24,6 +24,19 @@ export default function Dashboard() {
     const [recentEmployees, setRecentEmployees] = useState([])
     const [statusDistribution, setStatusDistribution] = useState([])
     const [todayDate, setTodayDate] = useState('')
+
+    // States for unified detailed employees modal and lists
+    const [presentEmployeesList, setPresentEmployeesList] = useState([])
+    const [absentEmployeesList, setAbsentEmployeesList] = useState([])
+    const [lateEmployeesList, setLateEmployeesList] = useState([])
+    const [halfDayEmployeesList, setHalfDayEmployeesList] = useState([])
+    const [detailModal, setDetailModal] = useState({
+        isOpen: false,
+        title: '',
+        subtitle: '',
+        employees: [],
+        type: 'Present'
+    })
 
     // Fetch employees and calculate stats
     useEffect(() => {
@@ -113,7 +126,7 @@ export default function Dashboard() {
         }
     }
 
-    // Fetch today's attendance statistics
+    // Fetch today's attendance statistics and categorize employees
     const fetchTodayAttendance = async () => {
         try {
             const today = new Date()
@@ -122,50 +135,76 @@ export default function Dashboard() {
             const dd = String(today.getDate()).padStart(2, '0')
             const todayStr = `${yyyy}-${mm}-${dd}`
 
-            // Fetch all attendance records for today
-            const { data, error } = await supabase
+            // Fetch all active employees
+            const { data: activeEmployees, error: empError } = await supabase
+                .from('employees')
+                .select('employee_id, name_as_per_aadhar, designation, joining_place')
+                .eq('status', 'Active')
+
+            if (empError) throw empError
+
+            // Fetch today's attendance logs
+            const { data: attendanceLogs, error: attError } = await supabase
                 .from('attendance_logs')
-                .select('status, employee_id')
+                .select('status, employee_id, store_name, in_time, late_minute')
                 .eq('attendance_date', todayStr)
+ 
+            if (attError) throw attError
+ 
+            const logsMap = new Map()
+            attendanceLogs?.forEach(log => {
+                logsMap.set(log.employee_id, log)
+            })
 
-            if (error) throw error
+            const presentList = []
+            const lateList = []
+            const absentList = []
+            const halfDayList = []
 
-            // Count by status
-            let present = 0
-            let late = 0
-            let absent = 0
-            let halfDay = 0
-
-            data?.forEach(record => {
-                switch (record.status) {
-                    case 'Present':
-                        present++
-                        break
-                    case 'Late':
-                        late++
-                        break
-                    case 'Absent':
-                        absent++
-                        break
-                    case 'Half Day':
-                        halfDay++
-                        break
-                    default:
-                        break
+            activeEmployees?.forEach(emp => {
+                const log = logsMap.get(emp.employee_id)
+                if (log) {
+                    const empWithStore = {
+                        ...emp,
+                        joining_place: log.store_name || emp.joining_place,
+                        in_time: log.in_time,
+                        late_minute: log.late_minute,
+                        status: log.status
+                    }
+                    if (log.status === 'Present') {
+                        presentList.push(empWithStore)
+                    } else if (log.status === 'Late') {
+                        lateList.push(empWithStore)
+                    } else if (log.status === 'Half Day') {
+                        halfDayList.push(empWithStore)
+                    } else if (log.status === 'Absent') {
+                        absentList.push(empWithStore)
+                    } else {
+                        presentList.push(empWithStore)
+                    }
+                } else {
+                    const empAbsent = {
+                        ...emp,
+                        status: 'Absent',
+                        in_time: null,
+                        late_minute: null
+                    }
+                    absentList.push(empAbsent)
                 }
             })
 
-            // Total present = Present + Late (Late is also considered present)
-            const totalPresent = present + late
-            const totalAbsent = absent + halfDay // Half Day is also considered absent for some metrics
+            setPresentEmployeesList(presentList)
+            setLateEmployeesList(lateList)
+            setAbsentEmployeesList(absentList)
+            setHalfDayEmployeesList(halfDayList)
 
             setTodayAttendance({
-                present,
-                absent,
-                late,
-                halfDay,
-                totalPresent,
-                totalAbsent
+                present: presentList.length + lateList.length,
+                late: lateList.length,
+                absent: absentList.length,
+                halfDay: halfDayList.length,
+                totalPresent: presentList.length + lateList.length,
+                totalAbsent: absentList.length
             })
 
         } catch (error) {
@@ -173,10 +212,76 @@ export default function Dashboard() {
         }
     }
 
+    const handleCardClick = (type) => {
+        let title = ''
+        let subtitle = ''
+        let employeesList = []
+
+        switch (type) {
+            case 'Present':
+                title = 'Present Employees'
+                subtitle = `Employees who marked attendance for ${todayDate}`
+                employeesList = [...presentEmployeesList, ...lateEmployeesList]
+                break
+            case 'Late':
+                title = 'Late Arrivals'
+                subtitle = `Employees who clocked in after 10:10 AM IST for ${todayDate}`
+                employeesList = lateEmployeesList
+                break
+            case 'Absent':
+                title = 'Absent Employees'
+                subtitle = `Active employees who have no attendance record or are marked absent for ${todayDate}`
+                employeesList = absentEmployeesList
+                break
+            case 'Half Day':
+                title = 'Half Day Employees'
+                subtitle = `Employees marked on half day for ${todayDate}`
+                employeesList = halfDayEmployeesList
+                break
+            default:
+                return
+        }
+
+        setDetailModal({
+            isOpen: true,
+            title,
+            subtitle,
+            employees: employeesList,
+            type
+        })
+    }
+
     // Refresh attendance data (can be called after sync)
     const refreshAttendance = async () => {
         await fetchTodayAttendance()
         await fetchEmployees()
+    }
+
+    const formatTimeIST = (timeStr) => {
+        if (!timeStr) return '-'
+        try {
+            let formatted = timeStr.trim();
+            if (formatted.includes('T')) {
+                const date = new Date(formatted);
+                if (!isNaN(date.getTime())) {
+                    return new Intl.DateTimeFormat('en-US', {
+                        timeZone: 'Asia/Kolkata',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                    }).format(date);
+                }
+            } else if (formatted.match(/^\d{1,2}:\d{2}(:\d{2})?$/)) {
+                const [hStr, mStr] = formatted.split(':');
+                const h = parseInt(hStr, 10);
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                const displayH = h % 12 === 0 ? 12 : h % 12;
+                return `${displayH}:${mStr} ${ampm}`;
+            }
+            return timeStr;
+        } catch (e) {
+            return timeStr;
+        }
     }
 
     const formatDate = (dateString) => {
@@ -226,8 +331,11 @@ export default function Dashboard() {
         return `conic-gradient(${segments.join(', ')})`
     }
 
-    const StatCard = ({ icon: Icon, title, value, color, bgColor, trend, subtext }) => (
-        <div className="bg-white  border border-gray-200 p-6 hover:shadow-md transition-shadow">
+    const StatCard = ({ icon: Icon, title, value, color, bgColor, trend, subtext, onClick }) => (
+        <div
+            onClick={onClick}
+            className={`bg-white border border-gray-200 p-4 hover:shadow-md transition-all hover:-translate-y-0.5 ${onClick ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+        >
             <div className="flex items-start justify-between">
                 <div className="space-y-2">
                     <p className="text-sm text-gray-500 font-medium">{title}</p>
@@ -280,13 +388,7 @@ export default function Dashboard() {
                 <>
                     {/* Today's Attendance Stats Cards */}
                     <div className="mb-6">
-                        <div className="flex items-center gap-2 mb-4">
-                            <Clock size={20} className="text-indigo-600" />
-                            <h2 className="text-lg font-semibold text-gray-900">Today's Attendance ({todayDate})</h2>
-                            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-                                {todayAttendance.totalPresent + todayAttendance.totalAbsent} records
-                            </span>
-                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                             <StatCard
                                 icon={UserCheck}
@@ -294,7 +396,8 @@ export default function Dashboard() {
                                 value={todayAttendance.present}
                                 color="text-green-600"
                                 bgColor="bg-green-50"
-                                subtext={`${todayAttendance.totalPresent} total present`}
+                                subtext={`${presentEmployeesList.length} on-time, ${lateEmployeesList.length} late`}
+                                onClick={() => handleCardClick('Present')}
                             />
                             <StatCard
                                 icon={Clock}
@@ -302,7 +405,8 @@ export default function Dashboard() {
                                 value={todayAttendance.late}
                                 color="text-orange-600"
                                 bgColor="bg-orange-50"
-                                subtext="After 10:10 AM IST"
+                                subtext="Clocked in after 10:10 AM"
+                                onClick={() => handleCardClick('Late')}
                             />
                             <StatCard
                                 icon={UserX}
@@ -310,6 +414,8 @@ export default function Dashboard() {
                                 value={todayAttendance.absent}
                                 color="text-red-600"
                                 bgColor="bg-red-50"
+                                subtext="No attendance log today"
+                                onClick={() => handleCardClick('Absent')}
                             />
                             <StatCard
                                 icon={AlertCircle}
@@ -317,42 +423,11 @@ export default function Dashboard() {
                                 value={todayAttendance.halfDay}
                                 color="text-yellow-600"
                                 bgColor="bg-yellow-50"
+                                subtext="Marked on half day status"
+                                onClick={() => handleCardClick('Half Day')}
                             />
                         </div>
                     </div>
-
-                    {/* Summary Stats Cards */}
-                    {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                        <StatCard
-                            icon={Users}
-                            title="Total Employees"
-                            value={totalEmployee}
-                            color="text-blue-600"
-                            bgColor="bg-blue-50"
-                        />
-                        <StatCard
-                            icon={UserCheck}
-                            title="Active Employees"
-                            value={activeEmployee}
-                            color="text-green-600"
-                            bgColor="bg-green-50"
-                            trend={`${totalEmployee ? Math.round((activeEmployee / totalEmployee) * 100) : 0}% of total`}
-                        />
-                        <StatCard
-                            icon={UserX}
-                            title="Inactive Employees"
-                            value={inactiveEmployee}
-                            color="text-amber-600"
-                            bgColor="bg-amber-50"
-                        />
-                        <StatCard
-                            icon={Clock}
-                            title="Left This Month"
-                            value={leaveThisMonth}
-                            color="text-red-600"
-                            bgColor="bg-red-50"
-                        />
-                    </div> */}
 
                     {/* Charts and Activity Section */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -487,9 +562,174 @@ export default function Dashboard() {
                             </div>
                         </div>
 
-
+                        <div className="bg-gradient-to-br from-red-500 to-red-600  shadow-lg p-6 text-white">
+                            <div className="flex items-center justify-between mb-4">
+                                <UserX size={28} />
+                                <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Today</span>
+                            </div>
+                            <p className="text-3xl font-bold">{todayAttendance.absent}</p>
+                            <p className="text-sm opacity-90 mt-1">Absent Today</p>
+                            <div className="mt-4 pt-4 border-t border-white/20">
+                                <p className="text-xs opacity-75">
+                                    {(() => {
+                                        const totalActive = activeEmployee || 1;
+                                        return `${Math.round((todayAttendance.absent / totalActive) * 100)}% of active employees`
+                                    })()}
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </>
+            )}
+
+            {/* Detailed Employees Modal */}
+            {detailModal.isOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDetailModal({ ...detailModal, isOpen: false })}>
+                    <div className="bg-white max-w-4xl w-full max-h-[80vh] shadow-2xl overflow-hidden border border-slate-100 flex flex-col" onClick={e => e.stopPropagation()}>
+                        {/* Modal Header */}
+                        <div className="flex justify-between items-center p-5 border-b bg-gray-50">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                    {(() => {
+                                        switch (detailModal.type) {
+                                            case 'Present': return <UserCheck size={20} className="text-green-600" />;
+                                            case 'Late': return <Clock size={20} className="text-orange-600" />;
+                                            case 'Absent': return <UserX size={20} className="text-red-600" />;
+                                            case 'Half Day': return <AlertCircle size={20} className="text-yellow-600" />;
+                                            default: return <UserCheck size={20} className="text-indigo-600" />;
+                                        }
+                                    })()}
+                                    {detailModal.title}
+                                    <span className="text-sm font-normal text-gray-500 ml-2">
+                                        ({detailModal.employees.length} employees)
+                                    </span>
+                                </h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {detailModal.subtitle}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setDetailModal({ ...detailModal, isOpen: false })}
+                                className="p-2 hover:bg-gray-200 text-gray-400 hover:text-gray-600 rounded transition-colors"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-5 overflow-y-auto max-h-[60vh] flex-1">
+                            {detailModal.employees.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <Users size={32} className="text-gray-400" />
+                                    </div>
+                                    <p className="text-lg font-semibold text-gray-700">No employees to show</p>
+                                    <p className="text-sm text-gray-400">There are no records matching this category today.</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-50 border-b border-gray-200">
+                                            <tr>
+                                                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider">#</th>
+                                                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider">Employee ID</th>
+                                                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider">Employee Name</th>
+                                                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider">Designation</th>
+                                                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider">Store</th>
+                                                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider">Attendance Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {detailModal.employees.map((emp, index) => (
+                                                <tr
+                                                    key={emp.employee_id}
+                                                    className={(() => {
+                                                        switch (detailModal.type) {
+                                                            case 'Present': return 'hover:bg-green-50 transition-colors';
+                                                            case 'Late': return 'hover:bg-orange-50 transition-colors';
+                                                            case 'Absent': return 'hover:bg-red-50 transition-colors';
+                                                            case 'Half Day': return 'hover:bg-yellow-50 transition-colors';
+                                                            default: return 'hover:bg-slate-50 transition-colors';
+                                                        }
+                                                    })()}
+                                                >
+                                                    <td className="px-4 py-3 text-gray-500 text-xs">{index + 1}</td>
+                                                    <td className="px-4 py-3 font-mono text-xs font-medium text-gray-900">{emp.employee_id}</td>
+                                                    <td className="px-4 py-3 font-medium text-gray-900">{emp.name_as_per_aadhar}</td>
+                                                    <td className="px-4 py-3 text-gray-600">{emp.designation || '-'}</td>
+                                                    <td className="px-4 py-3 text-gray-600">{emp.joining_place || '-'}</td>
+                                                    <td className="px-4 py-3">
+                                                        {(() => {
+                                                            const currentStatus = emp.status || detailModal.type;
+                                                            if (currentStatus === 'Late') {
+                                                                return (
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-xs text-orange-600 font-semibold flex items-center gap-1">
+                                                                            <Clock size={12} />
+                                                                            Late ({emp.late_minute || 0} mins)
+                                                                        </span>
+                                                                        {emp.in_time && (
+                                                                            <span className="text-[10px] text-gray-500 font-mono">
+                                                                                In: {formatTimeIST(emp.in_time)}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            } else if (currentStatus === 'Present') {
+                                                                return (
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                                                                            <UserCheck size={12} />
+                                                                            Present
+                                                                        </span>
+                                                                        {emp.in_time && (
+                                                                            <span className="text-[10px] text-gray-500 font-mono">
+                                                                                In: {formatTimeIST(emp.in_time)}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            } else if (currentStatus === 'Half Day') {
+                                                                return (
+                                                                    <span className="text-xs text-yellow-600 font-semibold flex items-center gap-1">
+                                                                        <AlertCircle size={12} />
+                                                                        Half Day
+                                                                    </span>
+                                                                );
+                                                            } else {
+                                                                return (
+                                                                    <span className="text-xs text-red-600 font-semibold flex items-center gap-1">
+                                                                        <UserX size={12} />
+                                                                        Absent
+                                                                    </span>
+                                                                );
+                                                            }
+                                                        })()}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex justify-between items-center p-4 border-t bg-gray-50">
+                            <p className="text-xs text-gray-500">
+                                Total active employees: {activeEmployee}
+                            </p>
+                            <button
+                                onClick={() => setDetailModal({ ...detailModal, isOpen: false })}
+                                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md text-sm font-medium transition-colors"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     )

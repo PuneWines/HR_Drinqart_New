@@ -60,6 +60,7 @@ export default function EmployeeManagement() {
     salary: '',
     joining_company_name: '',
     mode_of_attendance: 'Biometric',
+    status: 'Active',
     aadhar_no: '',
     current_account_no: '',
     ifsc_code: '',
@@ -422,7 +423,7 @@ export default function EmployeeManagement() {
         branch_name: formData.branch_name,
         payment_mode: formData.payment_mode,
         beneficiary_name: formData.beneficiary_name || null,
-        status: 'Active',
+        status: formData.status || 'Active',
         aadhar_front_image: uploadedUrls.aadharFront || null,
         aadhar_back_image: uploadedUrls.aadharBack || null,
         candidate_photo: uploadedUrls.candidatePhoto || null,
@@ -516,6 +517,7 @@ export default function EmployeeManagement() {
         aadhar_no: editFormData.aadhar_no,
         family_mobile_no: editFormData.family_mobile_no || null,
         joining_company_name: editFormData.joining_company_name || null,
+        status: editFormData.status || 'Active',
         updated_at: new Date(),
         aadhar_front_image: uploadedUrls.aadharFront || currentEmployee.aadhar_front_image,
         aadhar_back_image: uploadedUrls.aadharBack || currentEmployee.aadhar_back_image,
@@ -578,6 +580,7 @@ export default function EmployeeManagement() {
       aadhar_no: employee.aadhar_no || '',
       family_mobile_no: employee.family_mobile_no || '',
       joining_company_name: employee.joining_company_name || '',
+      status: employee.status || 'Active',
       aadharFront: null,
       aadharBack: null,
       candidatePhoto: null,
@@ -615,6 +618,7 @@ export default function EmployeeManagement() {
       salary: '',
       joining_company_name: '',
       mode_of_attendance: 'Biometric',
+      status: 'Active',
       aadhar_no: '',
       current_account_no: '',
       ifsc_code: '',
@@ -662,7 +666,231 @@ export default function EmployeeManagement() {
     }
   }
 
+  const handleExportCSV = () => {
+    try {
+      if (employees.length === 0) {
+        alert('No employee data available to export');
+        return;
+      }
 
+      const headers = [
+        'employee_id',
+        'indent_no',
+        'name_as_per_aadhar',
+        'father_name',
+        'dob',
+        'gender',
+        'mobile_no',
+        'candidate_email',
+        'family_mobile_no',
+        'date_of_joining',
+        'joining_place',
+        'designation',
+        'salary',
+        'joining_company_name',
+        'mode_of_attendance',
+        'aadhar_no',
+        'current_account_no',
+        'ifsc_code',
+        'branch_name',
+        'payment_mode',
+        'beneficiary_name',
+        'status'
+      ];
+
+      const csvRows = [headers.join(',')];
+
+      employees.forEach(item => {
+        const values = headers.map(header => {
+          const val = item[header] === null || item[header] === undefined ? '' : String(item[header]);
+          const escaped = val.replace(/"/g, '""');
+          return escaped.includes(',') || escaped.includes('\n') || escaped.includes('"') ? `"${escaped}"` : escaped;
+        });
+        csvRows.push(values.join(','));
+      });
+
+      const csvContent = csvRows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `employees_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      alert('Failed to export CSV: ' + error.message);
+    }
+  };
+
+  const handleImportCSV = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result;
+        if (typeof text !== 'string') return;
+
+        // Parse CSV into rows
+        const parseCSV = (str) => {
+          const lines = [];
+          let row = [""];
+          let inQuotes = false;
+
+          for (let i = 0; i < str.length; i++) {
+            const c = str[i];
+            const next = str[i + 1];
+
+            if (c === '"') {
+              if (inQuotes && next === '"') {
+                row[row.length - 1] += '"';
+                i++;
+              } else {
+                inQuotes = !inQuotes;
+              }
+            } else if (c === ',' && !inQuotes) {
+              row.push("");
+            } else if ((c === '\r' || c === '\n') && !inQuotes) {
+              if (c === '\r' && next === '\n') {
+                i++;
+              }
+              lines.push(row);
+              row = [""];
+            } else {
+              row[row.length - 1] += c;
+            }
+          }
+          if (row.length > 1 || row[0] !== "") {
+            lines.push(row);
+          }
+          return lines;
+        };
+
+        const rows = parseCSV(text);
+        if (rows.length < 2) {
+          alert('CSV file must contain a header row and at least one employee row');
+          return;
+        }
+
+        const headers = rows[0].map(h => h.trim().toLowerCase());
+        const expectedHeaders = [
+          'employee_id',
+          'indent_no',
+          'name_as_per_aadhar',
+          'father_name',
+          'dob',
+          'gender',
+          'mobile_no',
+          'candidate_email',
+          'family_mobile_no',
+          'date_of_joining',
+          'joining_place',
+          'designation',
+          'salary',
+          'joining_company_name',
+          'mode_of_attendance',
+          'aadhar_no',
+          'current_account_no',
+          'ifsc_code',
+          'branch_name',
+          'payment_mode',
+          'beneficiary_name',
+          'status'
+        ];
+
+        // Find match index for each expected field
+        const headerIndices = {};
+        expectedHeaders.forEach(field => {
+          headerIndices[field] = headers.indexOf(field.toLowerCase());
+        });
+
+        // Verify that we have the absolute minimum required headers
+        if (headerIndices['employee_id'] === -1 || headerIndices['name_as_per_aadhar'] === -1) {
+          alert('CSV must contain at least "employee_id" and "name_as_per_aadhar" columns');
+          return;
+        }
+
+        const employeesToImport = [];
+        const existingIds = new Set(employees.map(emp => String(emp.employee_id).trim().toLowerCase()));
+        const duplicates = [];
+
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (row.length === 1 && row[0] === '') continue; // Skip empty rows
+
+          const employee = {};
+
+          // Get values for expected headers
+          expectedHeaders.forEach(field => {
+            const idx = headerIndices[field];
+            if (idx !== -1 && row[idx] !== undefined) {
+              let val = row[idx].trim();
+              if (field === 'salary') {
+                employee[field] = val ? parseFloat(val) : null;
+              } else if (val === '') {
+                employee[field] = null;
+              } else {
+                employee[field] = val;
+              }
+            }
+          });
+
+          // Ensure required fields
+          if (!employee.employee_id || !employee.name_as_per_aadhar) {
+            continue;
+          }
+
+          // Check if employee_id already exists (Constraint: Do not change previous records, pop up error if exists)
+          const cleanId = String(employee.employee_id).trim().toLowerCase();
+          if (existingIds.has(cleanId)) {
+            duplicates.push(employee.employee_id);
+          }
+
+          // Fallbacks for missing required DB columns
+          if (!employee.status) employee.status = 'Active';
+          if (!employee.mode_of_attendance) employee.mode_of_attendance = 'Biometric';
+          if (!employee.payment_mode) employee.payment_mode = 'Bank Transfer';
+
+          employeesToImport.push(employee);
+        }
+
+        if (duplicates.length > 0) {
+          alert(`Error: The following Employee ID(s) already exist: ${duplicates.join(', ')}. Import aborted to prevent changing previous records.`);
+          return;
+        }
+
+        if (employeesToImport.length === 0) {
+          alert('No new employees found to import');
+          return;
+        }
+
+        if (!window.confirm(`Are you sure you want to import ${employeesToImport.length} new employees?`)) {
+          return;
+        }
+
+        setLoading(true);
+        const { error } = await supabase
+          .from('employees')
+          .insert(employeesToImport);
+
+        if (error) throw error;
+
+        alert(`Successfully imported ${employeesToImport.length} new employees`);
+        await fetchEmployees();
+      } catch (error) {
+        console.error('Error importing CSV:', error);
+        alert('Failed to import CSV: ' + error.message);
+      } finally {
+        setLoading(false);
+        e.target.value = ''; // Reset file input
+      }
+    };
+
+    reader.readAsText(file);
+  };
 
   // Render file upload component for add form
   const renderFileUpload = (fieldName, label, icon, required = false) => {
@@ -774,18 +1002,36 @@ export default function EmployeeManagement() {
             <Users size={22} />
             Employees
           </h1>
-
         </div>
-        <button
-          onClick={() => {
-            resetForm()
-            setShowForm(true)
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-        >
-          <UserPlus size={18} />
-          New Employee
-        </button>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer text-xs font-semibold rounded shadow-sm">
+            <Upload size={14} />
+            Import CSV
+            <input
+              type="file"
+              accept=".csv"
+              onChange={handleImportCSV}
+              className="hidden"
+            />
+          </label>
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors text-xs font-semibold rounded shadow-sm"
+          >
+            <ExternalLink size={14} />
+            Export CSV
+          </button>
+          <button
+            onClick={() => {
+              resetForm()
+              setShowForm(true)
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors text-xs font-semibold rounded shadow-sm"
+          >
+            <UserPlus size={14} />
+            New Employee
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search Section */}
@@ -904,21 +1150,26 @@ export default function EmployeeManagement() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">Work Location</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Designation</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Shop name</th>
+
               <th className="text-left px-4 py-3 font-medium text-gray-600">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan="9" className="text-center py-8 text-gray-500">Loading...</td>
+                <td colSpan="10" className="text-center py-8 text-gray-500">Loading...</td>
               </tr>
             ) : filteredEmployees.length === 0 ? (
               <tr>
-                <td colSpan="9" className="text-center py-8 text-gray-500">No employees found</td>
+                <td colSpan="10" className="text-center py-8 text-gray-500">No employees found</td>
               </tr>
             ) : (
               filteredEmployees.map((emp) => (
-                <tr key={emp.id} className="hover:bg-gray-50">
+                <tr
+                  key={emp.id}
+                  className="hover:bg-gray-50 cursor-pointer transition-colors"
+                  onClick={() => handleViewDetails(emp)}
+                >
                   <td className="px-4 py-3 text-gray-900">
                     {emp.employee_id}
                   </td>
@@ -957,15 +1208,27 @@ export default function EmployeeManagement() {
                     {emp.joining_company_name}
                   </td>
 
-                  <td className="px-4 py-3">
+
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-1">
-                      <button onClick={() => openEditPanel(emp)} className="p-1 text-blue-600 hover:text-blue-700" title="Edit">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditPanel(emp);
+                        }}
+                        className="p-1 text-blue-600 hover:text-blue-700 transition-colors"
+                        title="Edit"
+                      >
                         <Edit size={16} />
                       </button>
-                      <button onClick={() => handleViewDetails(emp)} className="p-1 text-gray-600 hover:text-indigo-600" title="View">
-                        <Eye size={16} />
-                      </button>
-                      <button onClick={() => handleDelete(emp)} className="p-1 text-red-600 hover:text-red-700" title="Delete">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(emp);
+                        }}
+                        className="p-1 text-red-600 hover:text-red-700 transition-colors"
+                        title="Delete"
+                      >
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -1162,6 +1425,14 @@ export default function EmployeeManagement() {
                     <select name="mode_of_attendance" value={formData.mode_of_attendance} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
                       <option value="Biometric">Biometric</option>
                       <option value="Manual">Manual</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Employee Status <span className="text-red-500">*</span></label>
+                    <select name="status" value={formData.status} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300  focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
                     </select>
                   </div>
 
@@ -1543,6 +1814,20 @@ export default function EmployeeManagement() {
                       </div>
 
                       <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Employee Status <span className="text-red-500">*</span></label>
+                        <select
+                          name="status"
+                          value={editFormData.status || 'Active'}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300  focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-800"
+                          required
+                        >
+                          <option value="Active">Active</option>
+                          <option value="Inactive">Inactive</option>
+                        </select>
+                      </div>
+
+                      <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Aadhar No <span className="text-red-500">*</span></label>
                         <input
                           type="text"
@@ -1829,6 +2114,15 @@ export default function EmployeeManagement() {
                           value={selectedEmployee.designation || '--'}
                           disabled
                           className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1.5">Status</label>
+                        <input
+                          type="text"
+                          value={selectedEmployee.status || 'Active'}
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-200  bg-gray-50 text-gray-500 cursor-not-allowed font-medium"
                         />
                       </div>
                       <div>

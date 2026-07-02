@@ -97,6 +97,17 @@ const Roster = () => {
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
     const [isSlidePanelOpen, setIsSlidePanelOpen] = useState(false);
+    const [isEditSlidePanelOpen, setIsEditSlidePanelOpen] = useState(false);
+    const [editSlideForm, setEditSlideForm] = useState({
+        employee_id: '',
+        employee_name: '',
+        start_date: '',
+        end_date: '',
+        shift_type: 'General Shift',
+        start_time: '09:30',
+        end_time: '19:30',
+        remark: ''
+    });
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [selectedDate, setSelectedDate] = useState(null);
     const [assignForm, setAssignForm] = useState({
@@ -567,6 +578,76 @@ const Roster = () => {
         setIsSlidePanelOpen(true);
     };
 
+    const handleOpenEditSlidePanel = (employee) => {
+        let startDate, endDate;
+        if (viewMode === 'weekly') {
+            startDate = currentWeekStart;
+            endDate = addDays(currentWeekStart, 6);
+        } else {
+            startDate = dateRange.fromDate;
+            endDate = dateRange.toDate;
+        }
+
+        setEditSlideForm({
+            employee_id: employee.employee_id,
+            employee_name: employee.name_as_per_aadhar || employee.name || '',
+            start_date: formatDate(startDate, 'yyyy-MM-dd'),
+            end_date: formatDate(endDate, 'yyyy-MM-dd'),
+            shift_type: 'General Shift',
+            start_time: '09:30',
+            end_time: '19:30',
+            remark: ''
+        });
+        setIsEditSlidePanelOpen(true);
+    };
+
+    const handleSaveEditSlideRoster = async () => {
+        try {
+            if (!editSlideForm.employee_id || !editSlideForm.start_date || !editSlideForm.end_date) {
+                toast.error('Please select start date, end date and shift type');
+                return;
+            }
+
+            const startDate = new Date(editSlideForm.start_date);
+            const endDate = new Date(editSlideForm.end_date);
+
+            if (endDate < startDate) {
+                toast.error('End date cannot be before start date');
+                return;
+            }
+
+            const shiftsToInsert = [];
+            let currentDate = new Date(startDate);
+            while (currentDate <= endDate) {
+                const dateStr = formatDate(currentDate, 'yyyy-MM-dd');
+                shiftsToInsert.push({
+                    employee_id: editSlideForm.employee_id,
+                    date: dateStr,
+                    shift_type: editSlideForm.shift_type,
+                    start_time: editSlideForm.start_time,
+                    end_time: editSlideForm.end_time,
+                    remark: editSlideForm.remark
+                });
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            const { error } = await supabase
+                .from('shift_roster')
+                .upsert(shiftsToInsert, {
+                    onConflict: 'employee_id,date'
+                });
+
+            if (error) throw error;
+
+            toast.success(`Successfully assigned shifts to ${editSlideForm.employee_name}`);
+            setIsEditSlidePanelOpen(false);
+            await fetchRosterData();
+        } catch (error) {
+            console.error('Error assigning weekly range shifts:', error);
+            toast.error('Failed to assign shifts');
+        }
+    };
+
     const handleOpenBulkAssignModal = () => {
         let startDate, endDate;
         if (viewMode === 'weekly') {
@@ -752,22 +833,22 @@ const Roster = () => {
             </div>
 
             {/* View Mode Tabs */}
-            <div className="flex items-center gap-2 mb-3 border-b border-gray-200">
+            <div className="flex items-center gap-2 mb-3">
                 <button
                     onClick={() => setViewMode('weekly')}
                     className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors border-b-2 ${viewMode === 'weekly'
-                            ? 'border-indigo-600 text-indigo-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                         }`}
                 >
                     <LayoutGrid size={14} />
-                    Weekly View
+                    Roster View
                 </button>
                 <button
                     onClick={() => setViewMode('range')}
                     className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors border-b-2 ${viewMode === 'range'
-                            ? 'border-indigo-600 text-indigo-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                         }`}
                 >
                     <CalendarRange size={14} />
@@ -776,7 +857,7 @@ const Roster = () => {
             </div>
 
             {/* Status Legend */}
-            <div className="bg-white border border-gray-200 p-2 mb-3 rounded-sm">
+            {/* <div className="bg-white border border-gray-200 p-2 mb-3 rounded-sm">
                 <div className="flex flex-wrap gap-3 items-center">
                     <span className="text-[11px] font-semibold text-gray-700">Shift Types:</span>
                     {customShifts.map((shift) => (
@@ -795,10 +876,10 @@ const Roster = () => {
                         </div>
                     )}
                 </div>
-            </div>
+            </div> */}
 
             {/* Filters */}
-            <div className="bg-white border border-gray-200 p-2 mb-3">
+            <div className="bg-white  p-2 mb-3">
                 {viewMode === 'weekly' ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
@@ -948,162 +1029,272 @@ const Roster = () => {
                 )}
             </div>
 
-            {/* Roster Table */}
-            <div className="bg-white border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)]">
-                    <table className="w-full text-xs relative border-collapse">
-                        <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20">
-                            <tr>
-                                <th className="sticky top-0 left-0 bg-gray-50 px-2 py-1.5 font-medium text-gray-600 text-[10px] z-30 w-[170px] border-r border-gray-200">
-                                    Employee
-                                </th>
-                                {displayDays.map((day, index) => {
-                                    const stats = getDayStats(day);
-                                    const isToday = isSameDay(day, today);
-                                    return (
-                                        <th
-                                            key={index}
-                                            className={`sticky top-0 bg-gray-50 px-0.5 py-1.5 font-medium text-center text-[10px] min-w-[100px] z-10 ${isToday ? 'bg-blue-50' : ''
-                                                } ${day.getDay() === 0 ? 'text-red-600' : 'text-gray-700'}`}
-                                        >
-                                            <div className="font-semibold">{formatDate(day, 'EEE')}</div>
-                                            <div className={`text-sm font-semibold ${isToday ? 'text-blue-600' : ''}`}>
-                                                {formatDate(day, 'dd')}
-                                            </div>
-                                            <div className="text-[8px] font-normal text-gray-400 mt-0.5">
-                                                {stats.total > 0 && (
-                                                    <>
-                                                        <span className="text-green-600">{stats.assigned}</span>
-                                                        <span className="mx-0.5">/</span>
-                                                        <span className="text-red-600">{stats.holiday}</span>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </th>
-                                    );
-                                })}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {loading ? (
+            {/* Roster Table - Weekly View */}
+            {viewMode === 'weekly' ? (
+                <div className="bg-white border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto overflow-y-auto max-h-[72vh]">
+                        <table className="w-full text-xs relative border-collapse">
+                            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20">
                                 <tr>
-                                    <td colSpan={displayDays.length + 1} className="text-center py-6">
-                                        <div className="flex items-center justify-center gap-1 text-gray-500 text-xs">
-                                            <Loader2 size={16} className="text-indigo-600 animate-spin" />
-                                            Loading roster data...
-                                        </div>
-                                    </td>
+                                    <th className="sticky top-0 left-0 bg-gray-50 px-3 py-2 font-medium text-gray-600 text-[10px] z-30 w-[200px] border-r border-gray-200">
+                                        Employee
+                                    </th>
+                                    <th className="sticky top-0 bg-gray-50 px-3 py-2 font-medium text-gray-600 text-[10px] z-10 w-[120px] text-center">
+                                        Start Date
+                                    </th>
+                                    <th className="sticky top-0 bg-gray-50 px-3 py-2 font-medium text-gray-600 text-[10px] z-10 w-[120px] text-center">
+                                        End Date
+                                    </th>
+                                    <th className="sticky top-0 bg-gray-50 px-3 py-2 font-medium text-gray-600 text-[10px] z-10 w-[180px] text-center">
+                                        Assigned Shift
+                                    </th>
+                                    <th className="sticky top-0 bg-gray-50 px-3 py-2 font-medium text-gray-600 text-[10px] z-10 w-[100px] text-center">
+                                        Action
+                                    </th>
                                 </tr>
-                            ) : filteredEmployees.length > 0 ? (
-                                filteredEmployees.map((employee) => (
-                                    <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="sticky left-0 bg-white hover:bg-gray-50 z-10 px-2 py-1.5 border-r border-gray-200">
-                                            <div className="flex items-center gap-1.5">
-                                                <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
-                                                    {employee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-medium text-gray-800">{employee.name_as_per_aadhar}</p>
-                                                    <p className="text-[9px] text-gray-500">{employee.employee_id}</p>
-                                                    <p className="text-[8px] text-gray-400">{employee.designation}</p>
-                                                </div>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan={5} className="text-center py-6">
+                                            <div className="flex items-center justify-center gap-1 text-gray-500 text-xs">
+                                                <Loader2 size={16} className="text-indigo-600 animate-spin" />
+                                                Loading roster data...
                                             </div>
                                         </td>
-                                        {displayDays.map((day, dayIndex) => {
-                                            const schedule = getEmployeeRosterForDay(employee.employee_id, day);
-                                            const isPast = day < new Date() && !isSameDay(day, new Date());
-                                            const config = getShiftConfig(schedule.shift_type);
+                                    </tr>
+                                ) : filteredEmployees.length > 0 ? (
+                                    filteredEmployees.map((employee) => {
+                                        // Get all shifts for this employee in the week
+                                        const weekDays = [];
+                                        for (let i = 0; i < 7; i++) {
+                                            const day = addDays(currentWeekStart, i);
+                                            weekDays.push(day);
+                                        }
 
-                                            return (
-                                                <td
-                                                    key={dayIndex}
-                                                    className={`px-0.5 py-1 text-center cursor-pointer transition-all hover:opacity-80 ${day.getDay() === 0 ? 'bg-gray-50' : ''
-                                                        } ${isPast ? 'opacity-60' : ''}`}
-                                                    onClick={() => !isPast && handleOpenSlidePanel(employee, day)}
-                                                >
-                                                    <div className="inline-flex items-center justify-center px-1 text-[15px] font-medium border border-transparent hover:scale-120 transition-transform">
-                                                        <span className={`px-1.5 py-0.5 h-[4vh] w-[7vw] border border-gray-100 ${config.color} ${config.bgColor}`}>
-                                                            {config.label}
-                                                        </span>
+                                        // Find first and last day with assigned shift
+                                        let firstAssigned = null;
+                                        let lastAssigned = null;
+                                        let assignedShifts = [];
+
+                                        weekDays.forEach(day => {
+                                            const schedule = getEmployeeRosterForDay(employee.employee_id, day);
+                                            if (schedule.shift_type !== 'Not Assigned') {
+                                                if (!firstAssigned) {
+                                                    firstAssigned = day;
+                                                }
+                                                lastAssigned = day;
+                                                assignedShifts.push({ day, schedule });
+                                            }
+                                        });
+
+                                        // Determine the shift to display
+                                        let shiftDisplay = 'Not Assigned';
+                                        let shiftTimes = '';
+                                        let shiftColor = '';
+
+                                        if (assignedShifts.length > 0) {
+                                            // Get the most common shift or the first one
+                                            const shiftTypes = assignedShifts.map(s => s.schedule.shift_type);
+                                            const shiftCounts = shiftTypes.reduce((acc, shift) => {
+                                                acc[shift] = (acc[shift] || 0) + 1;
+                                                return acc;
+                                            }, {});
+
+                                            const mostCommonShift = Object.keys(shiftCounts).reduce((a, b) =>
+                                                shiftCounts[a] > shiftCounts[b] ? a : b
+                                            );
+
+                                            shiftDisplay = mostCommonShift;
+                                            const firstShift = assignedShifts.find(s => s.schedule.shift_type === mostCommonShift);
+                                            if (firstShift && firstShift.schedule.start_time) {
+                                                shiftTimes = `${firstShift.schedule.start_time.slice(0, 5)} - ${firstShift.schedule.end_time.slice(0, 5)}`;
+                                            }
+                                            const config = getShiftConfig(mostCommonShift);
+                                            shiftColor = config.color;
+                                        }
+
+                                        const hasShift = assignedShifts.length > 0;
+                                        const startDateDisplay = firstAssigned ? formatDate(firstAssigned, 'dd MMM yyyy') : '-';
+                                        const endDateDisplay = lastAssigned ? formatDate(lastAssigned, 'dd MMM yyyy') : '-';
+
+                                        return (
+                                            <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
+                                                <td className="sticky left-0 bg-white hover:bg-gray-50 z-10 px-3 py-2 border-r border-gray-200">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
+                                                            {employee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-medium text-gray-800">{employee.name_as_per_aadhar}</p>
+                                                            <p className="text-[9px] text-gray-500">{employee.employee_id}</p>
+                                                            <p className="text-[8px] text-gray-400">{employee.designation}</p>
+                                                        </div>
                                                     </div>
-                                                    {schedule.shift_type !== 'Not Assigned' && schedule.shift_type !== 'Holiday' && schedule.start_time && (
-                                                        <div className="text-[8px] text-gray-400 mt-0.5">
-                                                            {schedule.start_time.slice(0, 5)} - {schedule.end_time.slice(0, 5)}
+                                                </td>
+                                                <td className="px-3 py-2 text-center text-xs font-medium text-gray-700">
+                                                    {startDateDisplay}
+                                                </td>
+                                                <td className="px-3 py-2 text-center text-xs font-medium text-gray-700">
+                                                    {endDateDisplay}
+                                                </td>
+                                                <td className="px-3 py-2 text-center">
+                                                    {hasShift ? (
+                                                        <div className="inline-flex flex-col items-center">
+                                                            <span className={`px-3 py-1 text-xs font-medium rounded ${shiftColor || 'bg-green-100 text-green-700'} border border-gray-100`}>
+                                                                {shiftDisplay}
+                                                            </span>
+                                                            {shiftTimes && (
+                                                                <span className="text-[9px] text-gray-500 mt-0.5">
+                                                                    {shiftTimes}
+                                                                </span>
+                                                            )}
+                                                            <span className="text-[8px] text-gray-400 mt-0.5">
+                                                                {assignedShifts.length} day{assignedShifts.length > 1 ? 's' : ''} assigned
+                                                            </span>
                                                         </div>
-                                                    )}
-                                                    {schedule.remark && (
-                                                        <div className="text-[7px] text-gray-400 mt-0.5 truncate max-w-[80px] mx-auto">
-                                                            {schedule.remark}
-                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-400">—</span>
                                                     )}
                                                 </td>
-                                            );
-                                        })}
+                                                <td className="px-3 py-2 text-center">
+                                                    <button
+                                                        onClick={() => handleOpenEditSlidePanel(employee)}
+                                                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors border border-indigo-200 px-2 py-1 rounded hover:bg-indigo-50"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                ) : (
+                                    <tr>
+                                        <td colSpan={5} className="text-center py-8">
+                                            <div className="flex flex-col items-center justify-center text-gray-400">
+                                                <Users size={32} className="mb-2" />
+                                                <p className="text-xs font-medium">No employees found</p>
+                                                <p className="text-[10px] mt-1">Try adjusting your filters</p>
+                                            </div>
+                                        </td>
                                     </tr>
-                                ))
-                            ) : (
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ) : (
+                /* Date Range View - Original Table with days as columns */
+                <div className="bg-white border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto overflow-y-auto max-h-[80vh]">
+                        <table className="w-full text-xs relative border-collapse">
+                            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20">
                                 <tr>
-                                    <td colSpan={displayDays.length + 1} className="text-center py-8">
-                                        <div className="flex flex-col items-center justify-center text-gray-400">
-                                            <Users size={32} className="mb-2" />
-                                            <p className="text-xs font-medium">No employees found</p>
-                                            <p className="text-[10px] mt-1">Try adjusting your filters</p>
-                                        </div>
-                                    </td>
+                                    <th className="sticky top-0 left-0 bg-gray-50 px-2 py-1.5 font-medium text-gray-600 text-[10px] z-30 w-[170px] border-r border-gray-200">
+                                        Employee
+                                    </th>
+                                    {displayDays.map((day, index) => {
+                                        const stats = getDayStats(day);
+                                        const isToday = isSameDay(day, today);
+                                        return (
+                                            <th
+                                                key={index}
+                                                className={`sticky top-0 bg-gray-50 px-0.5 py-1.5 font-medium text-center text-[10px] min-w-[100px] z-10 ${isToday ? 'bg-blue-50' : ''
+                                                    } ${day.getDay() === 0 ? 'text-red-600' : 'text-gray-700'}`}
+                                            >
+                                                <div className="font-semibold">{formatDate(day, 'EEE')}</div>
+                                                <div className={`text-sm font-semibold ${isToday ? 'text-blue-600' : ''}`}>
+                                                    {formatDate(day, 'dd')}
+                                                </div>
+                                                <div className="text-[8px] font-normal text-gray-400 mt-0.5">
+                                                    {stats.total > 0 && (
+                                                        <>
+                                                            <span className="text-green-600">{stats.assigned}</span>
+                                                            <span className="mx-0.5">/</span>
+                                                            <span className="text-red-600">{stats.holiday}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </th>
+                                        );
+                                    })}
                                 </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan={displayDays.length + 1} className="text-center py-6">
+                                            <div className="flex items-center justify-center gap-1 text-gray-500 text-xs">
+                                                <Loader2 size={16} className="text-indigo-600 animate-spin" />
+                                                Loading roster data...
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : filteredEmployees.length > 0 ? (
+                                    filteredEmployees.map((employee) => (
+                                        <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="sticky left-0 bg-white hover:bg-gray-50 z-10 px-2 py-1.5 border-r border-gray-200">
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
+                                                        {employee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs font-medium text-gray-800">{employee.name_as_per_aadhar}</p>
+                                                        <p className="text-[9px] text-gray-500">{employee.employee_id}</p>
+                                                        <p className="text-[8px] text-gray-400">{employee.designation}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            {displayDays.map((day, dayIndex) => {
+                                                const schedule = getEmployeeRosterForDay(employee.employee_id, day);
+                                                const isPast = day < new Date() && !isSameDay(day, new Date());
+                                                const config = getShiftConfig(schedule.shift_type);
 
-            {/* Stats Cards */}
-            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div className="bg-white border border-gray-200 p-3">
-                    <div className="flex items-center gap-2">
-                        <Users size={14} className="text-indigo-500" />
-                        <div className="text-[10px] text-gray-500">Total Employees</div>
-                    </div>
-                    <div className="text-lg font-bold text-gray-800 mt-1">{employees.length}</div>
-                </div>
-                <div className="bg-white border border-gray-200 p-3">
-                    <div className="flex items-center gap-2">
-                        <CheckCircle size={14} className="text-green-500" />
-                        <div className="text-[10px] text-gray-500">Assigned This Period</div>
-                    </div>
-                    <div className="text-lg font-bold text-green-600 mt-1">
-                        {displayDays.reduce((acc, day) => {
-                            const stats = getDayStats(day);
-                            return acc + stats.assigned;
-                        }, 0)}
-                    </div>
-                </div>
-                <div className="bg-white border border-gray-200 p-3">
-                    <div className="flex items-center gap-2">
-                        <Calendar size={14} className="text-red-500" />
-                        <div className="text-[10px] text-gray-500">Holidays This Period</div>
-                    </div>
-                    <div className="text-lg font-bold text-red-600 mt-1">
-                        {displayDays.reduce((acc, day) => {
-                            const stats = getDayStats(day);
-                            return acc + stats.holiday;
-                        }, 0)}
-                    </div>
-                </div>
-                <div className="bg-white border border-gray-200 p-3">
-                    <div className="flex items-center gap-2">
-                        <Clock size={14} className="text-gray-500" />
-                        <div className="text-[10px] text-gray-500">Unassigned This Period</div>
-                    </div>
-                    <div className="text-lg font-bold text-gray-600 mt-1">
-                        {displayDays.reduce((acc, day) => {
-                            const stats = getDayStats(day);
-                            const totalEmployees = employees.length;
-                            return acc + (totalEmployees - stats.total);
-                        }, 0)}
+                                                return (
+                                                    <td
+                                                        key={dayIndex}
+                                                        className={`px-0.5 py-1 text-center cursor-pointer transition-all hover:opacity-80 ${day.getDay() === 0 ? 'bg-gray-50' : ''
+                                                            } ${isPast ? 'opacity-60' : ''}`}
+                                                        onClick={() => !isPast && handleOpenSlidePanel(employee, day)}
+                                                    >
+                                                        <div className="inline-flex items-center justify-center px-1 text-[15px] font-medium border border-transparent hover:scale-120 transition-transform">
+                                                            <span className={`px-1.5 py-0.5 h-[4vh] w-[7vw] border border-gray-100 ${config.color} ${config.bgColor}`}>
+                                                                {config.label}
+                                                            </span>
+                                                        </div>
+                                                        {schedule.shift_type !== 'Not Assigned' && schedule.shift_type !== 'Holiday' && schedule.start_time && (
+                                                            <div className="text-[8px] text-gray-400 mt-0.5">
+                                                                {schedule.start_time.slice(0, 5)} - {schedule.end_time.slice(0, 5)}
+                                                            </div>
+                                                        )}
+                                                        {schedule.remark && (
+                                                            <div className="text-[7px] text-gray-400 mt-0.5 truncate max-w-[80px] mx-auto">
+                                                                {schedule.remark}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={displayDays.length + 1} className="text-center py-8">
+                                            <div className="flex flex-col items-center justify-center text-gray-400">
+                                                <Users size={32} className="mb-2" />
+                                                <p className="text-xs font-medium">No employees found</p>
+                                                <p className="text-[10px] mt-1">Try adjusting your filters</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-            </div>
+            )}
+
+
 
             {/* Assign Shift Modal */}
             {showAssignModal && (
@@ -1555,6 +1746,156 @@ const Roster = () => {
                                         Save Changes
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Slide Panel - Right to Left for Weekly Range Roster Edit */}
+            <div className={`fixed inset-0 overflow-hidden z-50 ${isEditSlidePanelOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+                <div
+                    className={`absolute inset-0 bg-black transition-opacity duration-300 ${isEditSlidePanelOpen ? 'opacity-50' : 'opacity-0'}`}
+                    onClick={() => {
+                        setIsEditSlidePanelOpen(false);
+                    }}
+                />
+
+                <div className={`absolute inset-y-0 right-0 max-w-3xl w-full bg-white shadow-2xl transform transition-transform duration-300 ease-in-out ${isEditSlidePanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+                    {isEditSlidePanelOpen && (
+                        <div className="h-full flex flex-col">
+                            {/* Header */}
+                            <div className="flex items-center justify-between p-4 border-b bg-gray-50">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                                        {editSlideForm.employee_name?.charAt(0).toUpperCase() || '?'}
+                                    </div>
+                                    <div>
+                                        <h3 className="font-semibold text-base text-gray-900">{editSlideForm.employee_name}</h3>
+                                        <p className="text-xs text-gray-500">ID: {editSlideForm.employee_id}</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setIsEditSlidePanelOpen(false);
+                                    }}
+                                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                <div className="bg-white border border-gray-200 p-6 space-y-6">
+                                    <h3 className="text-lg font-medium text-gray-900 pb-2 border-b border-gray-100">
+                                        Assign Shift Range
+                                    </h3>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Start Date</label>
+                                            <input
+                                                type="date"
+                                                value={editSlideForm.start_date}
+                                                onChange={(e) => setEditSlideForm({ ...editSlideForm, start_date: e.target.value })}
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5">End Date</label>
+                                            <input
+                                                type="date"
+                                                value={editSlideForm.end_date}
+                                                onChange={(e) => setEditSlideForm({ ...editSlideForm, end_date: e.target.value })}
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                            />
+                                        </div>
+
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Shift Type</label>
+                                            <select
+                                                value={editSlideForm.shift_type}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    const shift = customShifts.find(s => s.shift_name === val);
+                                                    setEditSlideForm({
+                                                        ...editSlideForm,
+                                                        shift_type: val,
+                                                        start_time: shift && shift.start_time ? shift.start_time.slice(0, 5) : '',
+                                                        end_time: shift && shift.end_time ? shift.end_time.slice(0, 5) : ''
+                                                    });
+                                                }}
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                            >
+                                                {customShifts.map((shift) => (
+                                                    <option key={shift.id} value={shift.shift_name}>
+                                                        {shift.shift_name} {shift.start_time ? `(${shift.start_time.slice(0, 5)} - ${shift.end_time.slice(0, 5)})` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Start Time</label>
+                                            <input
+                                                type="time"
+                                                value={editSlideForm.start_time}
+                                                onChange={(e) => setEditSlideForm({ ...editSlideForm, start_time: e.target.value })}
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                disabled={(() => {
+                                                    const shift = customShifts.find(s => s.shift_name === editSlideForm.shift_type);
+                                                    return shift ? (!shift.start_time) : (editSlideForm.shift_type === 'Day Off' || editSlideForm.shift_type === 'Holiday');
+                                                })()}
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5">End Time</label>
+                                            <input
+                                                type="time"
+                                                value={editSlideForm.end_time}
+                                                onChange={(e) => setEditSlideForm({ ...editSlideForm, end_time: e.target.value })}
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                disabled={(() => {
+                                                    const shift = customShifts.find(s => s.shift_name === editSlideForm.shift_type);
+                                                    return shift ? (!shift.start_time) : (editSlideForm.shift_type === 'Day Off' || editSlideForm.shift_type === 'Holiday');
+                                                })()}
+                                            />
+                                        </div>
+
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Remark</label>
+                                            <input
+                                                type="text"
+                                                value={editSlideForm.remark}
+                                                onChange={(e) => setEditSlideForm({ ...editSlideForm, remark: e.target.value })}
+                                                placeholder="Add a remark..."
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="flex items-center justify-end p-4 border-t bg-gray-50 gap-2">
+                                <button
+                                    onClick={() => {
+                                        setIsEditSlidePanelOpen(false);
+                                    }}
+                                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-gray-300 hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSaveEditSlideRoster}
+                                    className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-1.5"
+                                >
+                                    <CheckCircle size={14} />
+                                    Assign Shift
+                                </button>
                             </div>
                         </div>
                     )}

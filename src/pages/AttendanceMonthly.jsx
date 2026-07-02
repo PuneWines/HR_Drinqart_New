@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Search, Download, Filter, RefreshCw, Loader2, Database, Calendar, Users, Clock, TrendingUp, User } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getMonthlyAttendanceFromSupabase, syncMonthlyAttendanceFromApi } from '../services/attendanceSync';
+import { supabase } from '../lib/supabase';
 
 const DEVICES = [
     { name: 'BAWDHAN', apiName: 'BAVDHAN', serial: 'C26238441B1E342D' },
@@ -13,6 +14,13 @@ const DEVICES = [
 
 const ALL_DEVICES_OPTION = { name: 'ALL DEVICES', apiName: 'ALL', serial: 'ALL' };
 
+const formatSecsToHrsMins = (totalSecs) => {
+    if (!totalSecs) return '0h 0m';
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    return `${hrs}h ${mins}m`;
+};
+
 const AttendanceMonthly = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
@@ -23,6 +31,13 @@ const AttendanceMonthly = () => {
     const [syncing, setSyncing] = useState(false);
     const [error, setError] = useState(null);
     const [lastSynced, setLastSynced] = useState(null);
+    const [employeesData, setEmployeesData] = useState([]);
+    const [showUnmatched, setShowUnmatched] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, selectedMonth, selectedYear, selectedDevice, showUnmatched]);
 
     const monthNames = [
         "January", "February", "March", "April", "May", "June",
@@ -135,20 +150,131 @@ const AttendanceMonthly = () => {
         }
     };
 
+    const fetchEmployeesTable = async () => {
+        try {
+            let allEmployeesData = [];
+            let page = 0;
+            const pageSize = 1000;
+            let hasMore = true;
+
+            while (hasMore) {
+                const { data, error } = await supabase
+                    .from('employees')
+                    .select('*')
+                    .range(page * pageSize, (page + 1) * pageSize - 1);
+
+                if (error) throw error;
+
+                if (data && data.length > 0) {
+                    allEmployeesData = [...allEmployeesData, ...data];
+                    if (data.length < pageSize) {
+                        hasMore = false;
+                    } else {
+                        page++;
+                    }
+                } else {
+                    hasMore = false;
+                }
+            }
+
+            setEmployeesData(allEmployeesData);
+        } catch (error) {
+            console.error('Error fetching employees table:', error);
+        }
+    };
+
+    const getDaysInMonth = (month, year) => {
+        return new Date(year, month, 0).getDate();
+    };
+
+    const getSundaysCount = (month, year) => {
+        let count = 0;
+        const days = new Date(year, month, 0).getDate();
+        for (let i = 1; i <= days; i++) {
+            if (new Date(year, month - 1, i).getDay() === 0) count++;
+        }
+        return count;
+    };
+
+    useEffect(() => {
+        fetchEmployeesTable();
+    }, []);
+
     useEffect(() => {
         fetchAttendanceData();
     }, [selectedMonth, selectedYear, selectedDevice]);
 
-    const filteredData = attendanceData.filter(item => {
-        const matchesSearch =
-            (item.employeeName?.toString().toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-            (item.employeeCode?.toString().toLowerCase() || '').includes(searchTerm.toLowerCase());
+    const isEmployeeInTable = (employeeCode) => {
+        return employeesData.some(emp => emp.id === employeeCode || emp.employee_id === employeeCode);
+    };
 
-        const matchesMonth = selectedMonth ? item.month === monthNames[selectedMonth - 1] : true;
-        const matchesYear = selectedYear ? item.year?.toString() === selectedYear.toString() : true;
+    const filteredData = (() => {
+        // 1. Get monthly records from attendanceData that match Search, Month, and Year filters
+        const baseList = attendanceData.filter(item => {
+            const matchesSearch =
+                (item.employeeName?.toString().toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                (item.employeeCode?.toString().toLowerCase() || '').includes(searchTerm.toLowerCase());
 
-        return matchesSearch && matchesMonth && matchesYear;
-    });
+            const matchesMonth = selectedMonth ? item.month === monthNames[selectedMonth - 1] : true;
+            const matchesYear = selectedYear ? item.year?.toString() === selectedYear.toString() : true;
+
+            const isMatched = isEmployeeInTable(item.employeeCode);
+            const matchesFilterMode = showUnmatched ? !isMatched : isMatched;
+
+            return matchesSearch && matchesMonth && matchesYear && matchesFilterMode;
+        });
+
+        // 2. If showing verified (showUnmatched is false), append remaining employees from employees table
+        if (!showUnmatched) {
+            const hasAttendance = (empId) => {
+                return attendanceData.some(item => item.employeeCode === empId);
+            };
+
+            const remaining = employeesData
+                .filter(emp => {
+                    // Exclude if already in attendanceData (meaning they have monthly records)
+                    if (hasAttendance(emp.employee_id)) return false;
+
+                    // Apply search filter
+                    const name = emp.name_as_per_aadhar || '';
+                    const id = emp.employee_id || '';
+
+                    const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        id.toLowerCase().includes(searchTerm.toLowerCase());
+
+                    return matchesSearch;
+                })
+                .map(emp => ({
+                    year: selectedYear,
+                    month: monthNames[selectedMonth - 1],
+                    employeeCode: emp.employee_id,
+                    employeeName: emp.name_as_per_aadhar,
+                    designation: emp.designation,
+                    storeName: emp.joining_place,
+                    deviceId: '-',
+                    serialNo: '-',
+                    presentDays: 0,
+                    absentDays: getDaysInMonth(selectedMonth, selectedYear),
+                    punchMiss: 0,
+                    holidays: getSundaysCount(selectedMonth, selectedYear),
+                    lateDays: 0,
+                    totalWorkHours: '0h 0m',
+                    totalWorkSecs: 0,
+                    totalLunchTime: '0h 0m',
+                    totalLunchSecs: 0,
+                    isRemaining: true
+                }));
+
+            return [...baseList, ...remaining];
+        }
+
+        return baseList;
+    })();
+
+    const pageSize = 15;
+    const totalPages = Math.ceil(filteredData.length / pageSize);
+    const activePage = Math.min(currentPage, Math.max(1, totalPages));
+    const paginatedData = filteredData.slice((activePage - 1) * pageSize, activePage * pageSize);
 
     const downloadExcel = () => {
         const dataToExport = filteredData.map((item, idx) => ({
@@ -162,11 +288,9 @@ const AttendanceMonthly = () => {
             'Serial NO': item.serialNo,
             'Present': item.presentDays,
             'Absent': item.absentDays,
-            'Punch Miss': item.punchMiss,
-            'Holidays': item.holidays,
             'Late Days': item.lateDays,
-            'Total Working Hour': item.totalWorkHours,
-            'Total Lunch Time': item.totalLunchTime
+            'Avg Work Hours': item.presentDays > 0 ? formatSecsToHrsMins((item.totalWorkSecs || 0) / item.presentDays) : '0h 0m',
+            'Avg Lunch Time': item.presentDays > 0 ? formatSecsToHrsMins((item.totalLunchSecs || 0) / item.presentDays) : '0h 0m'
         }));
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
         const workbook = XLSX.utils.book_new();
@@ -203,6 +327,16 @@ const AttendanceMonthly = () => {
                         </div>
                     )}
                     <button
+                        onClick={() => setShowUnmatched(prev => !prev)}
+                        className={`flex h-10 items-center gap-1.5 px-3 py-1.5 font-medium text-xs transition-colors rounded-md active:scale-95 transition-all ${showUnmatched
+                            ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200'
+                            : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200'
+                            }`}
+                    >
+                        <Filter size={12} />
+                        {showUnmatched ? 'Show Verified Employees' : 'Show Unmatched Employees'}
+                    </button>
+                    <button
                         onClick={() => fetchAttendanceData(true)}
                         disabled={loading || syncing}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-medium text-xs transition-colors ${loading || syncing
@@ -232,7 +366,7 @@ const AttendanceMonthly = () => {
             </div>
 
             {/* Filter Section - Compact */}
-            <div className="bg-white rounded-md border border-gray-200 p-2 mb-3">
+            <div className="bg-white  p-2 mb-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
                     <div>
                         <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Search Employee</label>
@@ -301,86 +435,32 @@ const AttendanceMonthly = () => {
                 </div>
             </div>
 
-            {/* Summary Cards - Compact */}
-            {selectedDevice.serial === 'ALL' && attendanceData.length > 0 && !loading && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-                    <div className="bg-white rounded-md border border-gray-200 p-2.5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-[10px] font-medium text-gray-500">Total Employees</p>
-                                <p className="text-xl font-bold text-gray-900 mt-0.5">{totalEmployees}</p>
-                            </div>
-                            <div className="p-1.5 bg-indigo-50 rounded-md">
-                                <Users size={14} className="text-indigo-600" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-md border border-gray-200 p-2.5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-[10px] font-medium text-gray-500">Total Present</p>
-                                <p className="text-xl font-bold text-green-600 mt-0.5">{totalPresent}</p>
-                            </div>
-                            <div className="p-1.5 bg-green-50 rounded-md">
-                                <Clock size={14} className="text-green-600" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-md border border-gray-200 p-2.5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-[10px] font-medium text-gray-500">Total Absent</p>
-                                <p className="text-xl font-bold text-red-600 mt-0.5">{totalAbsent}</p>
-                            </div>
-                            <div className="p-1.5 bg-red-50 rounded-md">
-                                <User size={14} className="text-red-600" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-md border border-gray-200 p-2.5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-[10px] font-medium text-gray-500">Total Late</p>
-                                <p className="text-xl font-bold text-orange-600 mt-0.5">{totalLate}</p>
-                            </div>
-                            <div className="p-1.5 bg-orange-50 rounded-md">
-                                <TrendingUp size={14} className="text-orange-600" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Table - Compact */}
-            <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto max-h-[calc(100vh-220px)] overflow-y-auto">
+            <div className="bg-white rounded-md border border-gray-200 overflow-hidden ">
+                <div className="overflow-x-auto h-[60vh] overflow-y-auto">
                     <table className="w-full text-xs relative border-collapse">
                         <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
                             <tr>
                                 <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] w-12 z-10">#</th>
                                 <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-24 z-10">Month/Year</th>
-                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-24 z-10">Employee Code</th>
+                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-24 z-10">Employee Id</th>
                                 <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-32 z-10">Employee Name</th>
-                                <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-28 z-10">Designation</th>
+
                                 <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-24 z-10">Store</th>
                                 <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-20 z-10">Device ID</th>
                                 <th className="sticky top-0 bg-gray-50 text-left px-2 py-1.5 font-medium text-gray-600 text-[10px] min-w-28 z-10">Serial No</th>
                                 <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-20 z-10">Present</th>
                                 <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-20 z-10">Absent</th>
-                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-20 z-10">Punch Miss</th>
-                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-16 z-10">Holidays</th>
                                 <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-16 z-10">Late</th>
-                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-20 z-10">Work Hrs</th>
-                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-20 z-10">Lunch</th>
+                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-24 z-10">Avg Work Hrs</th>
+                                <th className="sticky top-0 bg-gray-50 text-center px-2 py-1.5 font-medium text-gray-600 text-[10px] w-24 z-10">Avg Lunch Time</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan="15" className="text-center py-8">
+                                    <td colSpan="13" className="text-center py-8">
                                         <div className="flex items-center justify-center gap-1.5 text-gray-500 text-xs">
                                             <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
                                             Loading...
@@ -389,7 +469,7 @@ const AttendanceMonthly = () => {
                                 </tr>
                             ) : error ? (
                                 <tr>
-                                    <td colSpan="15" className="text-center py-8">
+                                    <td colSpan="13" className="text-center py-8">
                                         <p className="text-red-600 text-xs mb-2">{error}</p>
                                         <button
                                             onClick={() => fetchAttendanceData()}
@@ -399,44 +479,68 @@ const AttendanceMonthly = () => {
                                         </button>
                                     </td>
                                 </tr>
-                            ) : filteredData.length > 0 ? (
-                                filteredData.map((item, index) => (
-                                    <tr key={index} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-2 py-1.5 text-[10px] text-gray-500">{index + 1}</td>
-                                        <td className="px-2 py-1.5 text-[10px] font-medium text-gray-700">{item.month} {item.year}</td>
-                                        <td className="px-2 py-1.5 text-[10px] font-mono font-medium text-gray-900">{item.employeeCode}</td>
-                                        <td className="px-2 py-1.5">
-                                            <div className="flex items-center gap-1.5">
-                                                <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[9px] font-medium">
-                                                    {item.employeeName?.charAt(0) || '?'}
+                            ) : paginatedData.length > 0 ? (
+                                paginatedData.map((item, index) => {
+                                    const isInEmployeesTable = isEmployeeInTable(item.employeeCode);
+                                    const actualIndex = (activePage - 1) * pageSize + index;
+                                    const employeeProfile = employeesData.find(e => e.employee_id === item.employeeCode || e.id === item.employeeCode);
+                                    const candidatePhoto = employeeProfile?.candidate_photo;
+                                    return (
+                                        <tr
+                                            key={index}
+                                            className={`transition-colors ${item.isRemaining ? 'bg-blue-100 hover:bg-blue-200' : isInEmployeesTable ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 bg-white'}`}
+                                        >
+                                            <td className="px-2 py-1.5 text-[10px] text-gray-500">{actualIndex + 1}</td>
+                                            <td className="px-2 py-1.5 text-[10px] font-medium text-gray-700">{item.month} {item.year}</td>
+                                            <td className="px-2 py-1.5 text-[10px] font-mono font-medium text-gray-900">{item.employeeCode}</td>
+                                            <td className="px-2 py-1.5">
+                                                <div className="flex items-center gap-1.5">
+                                                    {candidatePhoto ? (
+                                                        <img
+                                                            src={candidatePhoto}
+                                                            alt={item.employeeName}
+                                                            className="w-6 h-6 rounded-full object-cover border border-gray-200 flex-shrink-0"
+                                                        />
+                                                    ) : (
+                                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${item.isRemaining ? 'bg-blue-200 text-blue-800' : isInEmployeesTable ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                                                            {item.employeeName?.charAt(0) || '?'}
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <span className="text-[11px] font-medium text-gray-900 block">{item.employeeName}</span>
+                                                        {isInEmployeesTable && (
+                                                            <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <span className="text-[11px] font-medium text-gray-900">{item.employeeName}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-2 py-1.5 text-[10px] text-gray-600">{item.designation || '-'}</td>
-                                        <td className="px-2 py-1.5 text-[10px] text-gray-600">{item.storeName || '-'}</td>
-                                        <td className="px-2 py-1.5 text-[10px] font-mono text-gray-500">{item.deviceId || '-'}</td>
-                                        <td className="px-2 py-1.5 text-[10px] font-mono text-gray-500">{item.serialNo || '-'}</td>
-                                        <td className="px-2 py-1.5 text-center">
-                                            <span className="inline-flex px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
-                                                {item.presentDays}
-                                            </span>
-                                        </td>
-                                        <td className="px-2 py-1.5 text-center">
-                                            <span className="inline-flex px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-medium">
-                                                {item.absentDays}
-                                            </span>
-                                        </td>
-                                        <td className="px-2 py-1.5 text-center text-[10px] text-red-500 font-medium">{item.punchMiss || 0}</td>
-                                        <td className="px-2 py-1.5 text-center text-[10px] text-indigo-600 font-medium">{item.holidays || 0}</td>
-                                        <td className="px-2 py-1.5 text-center text-[10px] text-orange-600 font-medium">{item.lateDays || 0}</td>
-                                        <td className="px-2 py-1.5 text-center text-[10px] font-semibold text-gray-700">{item.totalWorkHours || '0h'}</td>
-                                        <td className="px-2 py-1.5 text-center text-[10px] font-semibold text-blue-600">{item.totalLunchTime || '0h'}</td>
-                                    </tr>
-                                ))
+                                            </td>
+
+                                            <td className="px-2 py-1.5 text-[10px] text-gray-600">{item.storeName || '-'}</td>
+                                            <td className="px-2 py-1.5 text-[10px] font-mono text-gray-500">{item.deviceId || '-'}</td>
+                                            <td className="px-2 py-1.5 text-[10px] font-mono text-gray-500">{item.serialNo || '-'}</td>
+                                            <td className="px-2 py-1.5 text-center">
+                                                <span className="inline-flex px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
+                                                    {item.presentDays}
+                                                </span>
+                                            </td>
+                                            <td className="px-2 py-1.5 text-center">
+                                                <span className="inline-flex px-1.5 py-0.5 text-red-700 rounded text-[10px] font-medium">
+                                                    {item.absentDays}
+                                                </span>
+                                            </td>
+                                            <td className="px-2 py-1.5 text-center text-[10px] text-orange-600 font-medium">{item.lateDays || 0}</td>
+                                            <td className="px-2 py-1.5 text-center text-[10px] font-semibold text-gray-700">
+                                                {formatSecsToHrsMins(item.presentDays > 0 ? (item.totalWorkSecs || 0) / item.presentDays : 0)}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-center text-[10px] font-semibold text-blue-600">
+                                                {formatSecsToHrsMins(item.presentDays > 0 ? (item.totalLunchSecs || 0) / item.presentDays : 0)}
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                             ) : (
                                 <tr>
-                                    <td colSpan="15" className="text-center py-8">
+                                    <td colSpan="13" className="text-center py-8">
                                         <div className="flex flex-col items-center justify-center text-gray-400">
                                             <Search size={28} className="mb-2" />
                                             <p className="text-xs font-medium">No records found</p>
@@ -448,6 +552,50 @@ const AttendanceMonthly = () => {
                         </tbody>
                     </table>
                 </div>
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs">
+                        <div className="text-gray-500">
+                            Showing <span className="font-semibold">{(activePage - 1) * pageSize + 1}</span> to <span className="font-semibold">{Math.min(activePage * pageSize, filteredData.length)}</span> of <span className="font-semibold">{filteredData.length}</span> employees
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                disabled={activePage === 1}
+                                onClick={() => setCurrentPage(activePage - 1)}
+                                className="px-2.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium rounded shadow-sm"
+                            >
+                                Previous
+                            </button>
+                            <div className="flex items-center gap-1">
+                                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                    .filter(page => page === 1 || page === totalPages || Math.abs(page - activePage) <= 1)
+                                    .map((page, index, arr) => {
+                                        const showEllipsis = index > 0 && page - arr[index - 1] > 1;
+                                        return (
+                                            <React.Fragment key={page}>
+                                                {showEllipsis && <span className="text-gray-400 px-1">...</span>}
+                                                <button
+                                                    onClick={() => setCurrentPage(page)}
+                                                    className={`w-7 h-7 flex items-center justify-center font-medium rounded transition-colors ${activePage === page
+                                                        ? 'bg-indigo-600 text-white'
+                                                        : 'bg-white border border-gray-300 hover:bg-gray-50 text-gray-700'
+                                                        }`}
+                                                >
+                                                    {page}
+                                                </button>
+                                            </React.Fragment>
+                                        );
+                                    })}
+                            </div>
+                            <button
+                                disabled={activePage === totalPages}
+                                onClick={() => setCurrentPage(activePage + 1)}
+                                className="px-2.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium rounded shadow-sm"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

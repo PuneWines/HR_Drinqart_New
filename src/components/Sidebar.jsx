@@ -23,7 +23,7 @@ const navItems = [
   },
   { to: '/roaster', label: 'Roster', icon: Wallet, id: 'roaster' },
   { to: '/payroll', label: 'Payroll', icon: DollarSign, id: 'payroll' },
-  { to: '/misreport', label: 'MIS Report', icon: BarChart3, id: 'misReport' },
+  // { to: '/misreport', label: 'MIS Report', icon: BarChart3, id: 'misReport' }, 
   { to: '/admin-advance', label: 'Admin Advance', icon: Wallet, id: 'admin advance' }
 ]
 
