@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Supabase Edge Functions with sensitive credentials
+supabase/functions/sync-attendance/index.ts

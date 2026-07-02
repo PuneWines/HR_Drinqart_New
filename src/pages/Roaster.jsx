@@ -21,7 +21,8 @@ import {
     Database,
     Clock as ClockIcon,
     LayoutGrid,
-    CalendarRange
+    CalendarRange,
+    Trash2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -601,6 +602,39 @@ const Roster = () => {
         setIsEditSlidePanelOpen(true);
     };
 
+    // Delete all roster entries for an employee between firstAssigned and lastAssigned dates
+    const handleDeleteRosterRange = async (employee, firstAssigned, lastAssigned) => {
+        if (!firstAssigned) {
+            toast.error('No shifts assigned for this employee in the current period.');
+            return;
+        }
+
+        const startStr = formatDate(firstAssigned, 'yyyy-MM-dd');
+        const endStr   = lastAssigned ? formatDate(lastAssigned, 'yyyy-MM-dd') : startStr;
+
+        const confirmed = window.confirm(
+            `Delete ALL roster entries for ${employee.name_as_per_aadhar || employee.employee_id}\nfrom ${startStr} to ${endStr}?\n\nThis action cannot be undone.`
+        );
+        if (!confirmed) return;
+
+        try {
+            const { error } = await supabase
+                .from('shift_roster')
+                .delete()
+                .eq('employee_id', employee.employee_id)
+                .gte('date', startStr)
+                .lte('date', endStr);
+
+            if (error) throw error;
+
+            toast.success(`Deleted roster for ${employee.name_as_per_aadhar || employee.employee_id} (${startStr} → ${endStr})`);
+            await fetchRosterData();
+        } catch (err) {
+            console.error('Error deleting roster range:', err);
+            toast.error('Failed to delete roster entries. Please try again.');
+        }
+    };
+
     const handleSaveEditSlideRoster = async () => {
         try {
             if (!editSlideForm.employee_id || !editSlideForm.start_date || !editSlideForm.end_date) {
@@ -1158,12 +1192,25 @@ const Roster = () => {
                                                     )}
                                                 </td>
                                                 <td className="px-3 py-2 text-center">
-                                                    <button
-                                                        onClick={() => handleOpenEditSlidePanel(employee)}
-                                                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors border border-indigo-200 px-2 py-1 rounded hover:bg-indigo-50"
-                                                    >
-                                                        Edit
-                                                    </button>
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        <button
+                                                            onClick={() => handleOpenEditSlidePanel(employee)}
+                                                            title="Edit shift assignment"
+                                                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors border border-indigo-200 px-2 py-1 rounded hover:bg-indigo-50"
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        {hasShift && (
+                                                            <button
+                                                                onClick={() => handleDeleteRosterRange(employee, firstAssigned, lastAssigned)}
+                                                                title={`Delete roster from ${startDateDisplay} to ${endDateDisplay}`}
+                                                                className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-700 transition-colors border border-red-200 px-2 py-1 rounded hover:bg-red-50"
+                                                            >
+                                                                <Trash2 size={11} />
+                                                                Delete
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         );

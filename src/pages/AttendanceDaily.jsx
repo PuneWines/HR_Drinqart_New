@@ -188,10 +188,10 @@ const isLatePunch = (utcDateStr) => {
 
 // Status colors and labels - compact version
 const STATUS_CONFIG = {
-  'Present': { color: 'bg-green-100 text-green-700', label: 'P', fullLabel: 'Present', bgColor: 'bg-green-200' },
+  'Present': { color: 'bg-green-100 text-green-700', label: 'P', fullLabel: 'Present', bgColor: 'bg-green-200/60' },
   'Late': { color: 'bg-orange-100 text-orange-700', label: 'L', fullLabel: 'Late', bgColor: 'bg-orange-200/60' },
-  'Absent': { color: 'bg-red-100 text-red-700', label: 'A', fullLabel: 'Absent', bgColor: 'bg-red-200' },
-  'Half Day': { color: 'bg-yellow-100 text-yellow-700', label: 'H', fullLabel: 'Half Day', bgColor: 'bg-yellow-200' },
+  'Absent': { color: 'bg-red-100 text-red-700', label: 'A', fullLabel: 'Absent', bgColor: 'bg-red-200/40' },
+  'Half Day': { color: 'bg-yellow-100 text-yellow-700', label: 'H', fullLabel: 'Half Day', bgColor: 'bg-yellow-200/60' },
   'Holiday': { color: 'bg-purple-100 text-purple-700', label: 'Hol', fullLabel: 'Holiday', bgColor: 'bg-purple-200' },
   'Day Off': { color: 'bg-gray-100 text-gray-700', label: 'DO', fullLabel: 'Day Off', bgColor: 'bg-gray-200' },
   'On Leave': { color: 'bg-blue-100 text-blue-700', label: 'Lv', fullLabel: 'On Leave', bgColor: 'bg-blue-200' },
@@ -1066,7 +1066,8 @@ const AttendanceDaily = () => {
   };
 
   // Helper to compute metrics from manual punches
-  const calculateMetricsFromManualPunches = (punches, dateStr) => {
+  // shift: optional shift_roster entry { start_time, end_time, shift_type }
+  const calculateMetricsFromManualPunches = (punches, dateStr, shift = null) => {
     const time1 = punches["1"];
     const time2 = punches["2"];
     const time3 = punches["3"];
@@ -1084,7 +1085,8 @@ const AttendanceDaily = () => {
         punch_miss: "No",
         punch_miss_msg: "",
         working_hour: "00:00:00",
-        late_minute: 0
+        late_minute: 0,
+        status: null
       };
     }
 
@@ -1095,7 +1097,7 @@ const AttendanceDaily = () => {
     const in_time = formatDateTime(activeTimes[0]);
     const out_time = activeTimes.length > 1 ? formatDateTime(activeTimes[activeTimes.length - 1]) : null;
 
-    const formatTime12h = (timeVal) => {
+    const formatTime12hLocal = (timeVal) => {
       try {
         const [hStr, mStr] = timeVal.split(":");
         const h = parseInt(hStr, 10);
@@ -1109,8 +1111,40 @@ const AttendanceDaily = () => {
       }
     };
 
-    const punch_log = activeTimes.map(formatTime12h).join(" | ");
-    const late_minute = calculateLateMinutes(in_time, dateStr);
+    const punch_log = activeTimes.map(formatTime12hLocal).join(" | ");
+
+    // ── Late calculation ──────────────────────────────────────────────────
+    // If a shift is assigned for this employee on this date, use the shift
+    // start_time + 10-minute grace window. Otherwise fall back to 10:10 default.
+    let late_minute = 0;
+    try {
+      const inDate = parseISTToDate(in_time);
+      if (inDate) {
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Asia/Kolkata',
+          hour: 'numeric',
+          minute: 'numeric',
+          hour12: false
+        }).formatToParts(inDate);
+        const hour = parseInt(parts.find(p => p.type === 'hour').value, 10);
+        const minute = parseInt(parts.find(p => p.type === 'minute').value, 10);
+        const totalMinutes = hour * 60 + minute;
+
+        let officialStart = 10 * 60;       // 10:00 default
+        let graceThreshold = 10 * 60 + 10;  // 10:10 default
+
+        if (shift?.start_time) {
+          const [shiftH, shiftM] = shift.start_time.split(':').map(Number);
+          officialStart = shiftH * 60 + shiftM;
+          graceThreshold = officialStart + 10;
+        }
+
+        late_minute = totalMinutes >= graceThreshold ? totalMinutes - officialStart : 0;
+      }
+    } catch (e) {
+      late_minute = 0;
+    }
+
     const working_hour = out_time ? calculateWorkHours(in_time, out_time, dateStr) : "00:00:00";
 
     const punch_miss = activeTimes.length === 1 ? "Yes" : "No";
@@ -1122,6 +1156,9 @@ const AttendanceDaily = () => {
 
     const punch_log_status = activeTimes.length % 2 === 1 ? "Andar" : "Bahar";
 
+    // At least one punch → status is Present or Late (never Absent)
+    const status = late_minute > 0 ? "Late" : "Present";
+
     return {
       in_time,
       out_time,
@@ -1130,7 +1167,8 @@ const AttendanceDaily = () => {
       punch_miss,
       punch_miss_msg,
       working_hour,
-      late_minute
+      late_minute,
+      status
     };
   };
 
@@ -1183,7 +1221,22 @@ const AttendanceDaily = () => {
           });
         }
 
-        const metrics = calculateMetricsFromManualPunches(finalManualPunches.manual, date);
+        // ── Fetch shift roster for this employee on this date ─────────────
+        // Used to calculate late minutes correctly against the assigned shift.
+        let shiftEntry = null;
+        try {
+          const { data: shiftRows } = await supabase
+            .from('shift_roster')
+            .select('*')
+            .eq('employee_id', employeeId)
+            .eq('date', date)
+            .maybeSingle();
+          shiftEntry = shiftRows || null;
+        } catch (shiftErr) {
+          console.warn('Could not fetch shift roster for manual punch calculation:', shiftErr);
+        }
+
+        const metrics = calculateMetricsFromManualPunches(finalManualPunches.manual, date, shiftEntry);
         updateData.manual_punches = finalManualPunches;
         updateData.in_time = metrics.in_time;
         updateData.out_time = metrics.out_time;
@@ -1191,6 +1244,18 @@ const AttendanceDaily = () => {
         updateData.punch_miss_msg = metrics.punch_miss_msg;
         updateData.working_hour = metrics.working_hour;
         updateData.late_minute = metrics.late_minute;
+        updateData.is_Late = metrics.late_minute > 0;
+
+        // ── Status resolution ─────────────────────────────────────────────
+        // If marked as Absent manually → keep Absent.
+        // If at least one manual punch exists → honour computed Present/Late.
+        // Otherwise keep the newStatus passed by the caller.
+        if (manualPunches.absent) {
+          updateData.status = 'Absent';
+        } else if (metrics.status) {
+          updateData.status = metrics.status; // 'Present' or 'Late'
+        }
+
         if (!existingRecord) {
           updateData.punch_log = "-";
           updateData.punch_log_status = "Bahar";
