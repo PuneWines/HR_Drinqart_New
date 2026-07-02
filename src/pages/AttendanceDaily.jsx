@@ -1848,7 +1848,7 @@ const AttendanceDaily = () => {
       {viewMode === 'calendar' ? (
         /* Calendar View - Compact */
         <div className="bg-white rounded-md border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto overflow-y-auto max-h-[calc(92vh-220px)]">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(88vh-220px)]">
             <table className="w-full text-xs relative border-collapse">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20 shadow-sm">
                 <tr>
@@ -2583,7 +2583,7 @@ const AttendanceDaily = () => {
                           const punches = punchesObj.manual && typeof punchesObj.manual === 'object'
                             ? punchesObj.manual
                             : punchesObj;
-                          
+
                           const activePunches = Object.entries(punches)
                             .filter(([key, val]) => val && val !== '' && typeof val === 'string' && key !== 'is_manual')
                             .sort((a, b) => a[1].localeCompare(b[1]));
