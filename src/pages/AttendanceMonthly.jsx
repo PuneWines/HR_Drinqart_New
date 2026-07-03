@@ -336,21 +336,7 @@ const AttendanceMonthly = () => {
                         <Filter size={12} />
                         {showUnmatched ? 'Show Verified Employees' : 'Show Unmatched Employees'}
                     </button>
-                    <button
-                        onClick={() => fetchAttendanceData(true)}
-                        disabled={loading || syncing}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-medium text-xs transition-colors ${loading || syncing
-                            ? 'bg-indigo-300 cursor-not-allowed'
-                            : 'bg-indigo-600 hover:bg-indigo-700'
-                            }`}
-                    >
-                        {syncing ? (
-                            <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                            <RefreshCw size={12} />
-                        )}
-                        {syncing ? 'Syncing...' : 'Sync Logs'}
-                    </button>
+
                     <button
                         onClick={downloadExcel}
                         disabled={filteredData.length === 0}

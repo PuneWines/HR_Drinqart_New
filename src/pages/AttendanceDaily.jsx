@@ -161,31 +161,6 @@ const formatDateIST = (utcDateStr) => {
   }
 };
 
-// Check if punch is late (after 10:10 AM IST)
-const isLatePunch = (utcDateStr) => {
-  if (!utcDateStr || utcDateStr === '-') return false;
-  try {
-    const d = parseISTToDate(utcDateStr);
-    if (!d) return false;
-
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Asia/Kolkata',
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: false
-    }).formatToParts(d);
-
-    const hour = parseInt(parts.find(p => p.type === 'hour').value, 10);
-    const minute = parseInt(parts.find(p => p.type === 'minute').value, 10);
-    const totalMinutes = hour * 60 + minute;
-
-    const thresholdMinutes = 10 * 60 + 10;
-    return totalMinutes > thresholdMinutes;
-  } catch (e) {
-    return false;
-  }
-};
-
 // Status colors and labels - compact version
 const STATUS_CONFIG = {
   'Present': { color: 'bg-green-100 text-green-700', label: 'P', fullLabel: 'Present', bgColor: 'bg-green-200/60' },
@@ -1555,10 +1530,6 @@ const AttendanceDaily = () => {
       });
     }
     if (record) {
-      const isLate = record.in_time ? isLatePunch(record.in_time) : false;
-      if (isLate && (record.status === 'Present' || !record.status)) {
-        return { ...record, status: 'Late' };
-      }
       return record;
     }
     if (date > todayDate) {

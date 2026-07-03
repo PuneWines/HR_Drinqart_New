@@ -359,44 +359,11 @@ async function main() {
   // Aggregate and calculate metrics
   const aggregatedData = Object.values(grouped).map(group => {
     const logs = group.logs;
-    let inTime = '-';
-    let outTime = '-';
-    let punchMiss = 'No';
-    let punchMissMsg = '';
-
-    // Lookup shift roster for this employee
     const code = group.EmployeeCode.toString().trim();
-    const shift = rosterList.find(s => s.employee_id === code);
-
-    if (logs.length === 1) {
-      const punchTime = logs[0];
-      const timePart = punchTime.split(' ')[1] || '';
-      const hours = parseInt(timePart.split(':')[0]) || 0;
-
-      punchMiss = 'Yes';
-      let morningPunchThreshold = 15; // 3 PM default
-      if (shift && shift.start_time && shift.end_time) {
-        const endHour = parseInt(shift.end_time.split(':')[0]) || 18;
-        const startHour = parseInt(shift.start_time.split(':')[0]) || 9;
-        morningPunchThreshold = Math.floor((startHour + endHour) / 2);
-      }
-
-      if (hours >= morningPunchThreshold) {
-        outTime = punchTime;
-        punchMissMsg = 'Morning Punch Miss';
-      } else {
-        inTime = punchTime;
-        punchMissMsg = 'Evening Punch Miss';
-      }
-    } else if (logs.length > 1) {
-      inTime = logs[0];
-      outTime = logs[logs.length - 1];
-    }
-
     const serial = group.SerialNumber.toString().trim();
     const isNumeric = !isNaN(code) && code !== '';
 
-    // Metadata Lookup
+    // Metadata Lookup (resolved early to get displayCode for shift roster lookup)
     const empMeta = joiningData.find(e =>
       (e.id && e.id.toLowerCase() === code.toLowerCase()) ||
       (e.name && e.name.toLowerCase() === code.toLowerCase())
@@ -414,6 +381,42 @@ async function main() {
     const displayStore = dMap ? dMap.storeName : (empMeta ? empMeta.store : group.SourceDeviceName);
     const displayDeviceId = dMap ? dMap.deviceId : '-';
     const displayAssignedSerial = dMap ? dMap.serialNo : serial;
+
+    // Lookup shift roster for this employee (uses both raw code and mapped displayCode)
+    const shift = rosterList.find(s => 
+      s.employee_id.toString().trim().toLowerCase() === code.toLowerCase() ||
+      s.employee_id.toString().trim().toLowerCase() === displayCode.toLowerCase()
+    );
+
+    let morningPunchThreshold = 15; // 3 PM default
+    if (shift && shift.start_time && shift.end_time) {
+      const endHour = parseInt(shift.end_time.split(':')[0]) || 18;
+      const startHour = parseInt(shift.start_time.split(':')[0]) || 9;
+      morningPunchThreshold = Math.floor((startHour + endHour) / 2);
+    }
+
+    let inTime = '-';
+    let outTime = '-';
+    let punchMiss = 'No';
+    let punchMissMsg = '';
+
+    if (logs.length === 1) {
+      const punchTime = logs[0];
+      const timePart = punchTime.split(' ')[1] || '';
+      const hours = parseInt(timePart.split(':')[0]) || 0;
+
+      punchMiss = 'Yes';
+      if (hours >= morningPunchThreshold) {
+        outTime = punchTime;
+        punchMissMsg = 'Morning Punch Miss';
+      } else {
+        inTime = punchTime;
+        punchMissMsg = 'Evening Punch Miss';
+      }
+    } else if (logs.length > 1) {
+      inTime = logs[0];
+      outTime = logs[logs.length - 1];
+    }
 
     const lateMins = calculateLateMinutes(inTime, shift);
     const workHrs = (punchMiss === 'Yes' || logs.length === 0) ? '00:00:00' : calculateWorkHours(inTime, outTime);
