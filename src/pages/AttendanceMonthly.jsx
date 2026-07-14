@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Download, Filter, RefreshCw, Loader2, Database, Calendar, Users, Clock, TrendingUp, User } from 'lucide-react';
+import { Search, Download, Filter, RefreshCw, Loader2, Database, Calendar, Users, Clock, TrendingUp, User, ChevronDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getMonthlyAttendanceFromSupabase, syncMonthlyAttendanceFromApi } from '../services/attendanceSync';
 import { supabase } from '../lib/supabase';
@@ -32,17 +32,17 @@ const AttendanceMonthly = () => {
     const [error, setError] = useState(null);
     const [lastSynced, setLastSynced] = useState(null);
     const [employeesData, setEmployeesData] = useState([]);
-    const [showUnmatched, setShowUnmatched] = useState(false);
+    const [matchFilter, setMatchFilter] = useState('ALL'); // 'ALL', 'MATCHED', 'UNMATCHED'
     const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, selectedMonth, selectedYear, selectedDevice, showUnmatched]);
+    }, [searchTerm, selectedMonth, selectedYear, selectedDevice, matchFilter]);
 
     const monthNames = [
         "January", "February", "March", "April", "May", "June",
         "July", "August", "September", "October", "November", "December"
-    ];
+    ];  
 
     const fetchAttendanceData = async (forceSync = false) => {
         setLoading(true);
@@ -205,7 +205,13 @@ const AttendanceMonthly = () => {
     }, [selectedMonth, selectedYear, selectedDevice]);
 
     const isEmployeeInTable = (employeeCode) => {
-        return employeesData.some(emp => emp.id === employeeCode || emp.employee_id === employeeCode);
+        if (!employeeCode) return false;
+        const cleanId = employeeCode.toString().trim().toLowerCase();
+        return employeesData.some(emp => {
+            const empId = emp.id?.toString().trim().toLowerCase();
+            const empEmployeeId = emp.employee_id?.toString().trim().toLowerCase();
+            return empId === cleanId || empEmployeeId === cleanId;
+        });
     };
 
     const filteredData = (() => {
@@ -219,13 +225,19 @@ const AttendanceMonthly = () => {
             const matchesYear = selectedYear ? item.year?.toString() === selectedYear.toString() : true;
 
             const isMatched = isEmployeeInTable(item.employeeCode);
-            const matchesFilterMode = showUnmatched ? !isMatched : isMatched;
+            
+            let matchesFilterMode = true;
+            if (matchFilter === 'MATCHED') {
+                matchesFilterMode = isMatched;
+            } else if (matchFilter === 'UNMATCHED') {
+                matchesFilterMode = !isMatched;
+            }
 
             return matchesSearch && matchesMonth && matchesYear && matchesFilterMode;
         });
 
-        // 2. If showing verified (showUnmatched is false), append remaining employees from employees table
-        if (!showUnmatched) {
+        // 2. If showing verified or all (matchFilter is not UNMATCHED), append remaining employees from employees table
+        if (matchFilter !== 'UNMATCHED') {
             const hasAttendance = (empId) => {
                 return attendanceData.some(item => item.employeeCode === empId);
             };
@@ -326,16 +338,32 @@ const AttendanceMonthly = () => {
                             </span>
                         </div>
                     )}
-                    <button
-                        onClick={() => setShowUnmatched(prev => !prev)}
-                        className={`flex h-10 items-center gap-1.5 px-3 py-1.5 font-medium text-xs transition-colors rounded-md active:scale-95 transition-all ${showUnmatched
-                            ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200'
-                            : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200'
+                    <div className="relative">
+                        <select
+                            value={matchFilter}
+                            onChange={(e) => setMatchFilter(e.target.value)}
+                            className={`flex h-10 appearance-none items-center gap-1.5 pl-3 pr-8 py-1.5 font-semibold text-xs border rounded-md cursor-pointer transition-all focus:outline-none ${
+                                matchFilter === 'ALL'
+                                    ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+                                    : matchFilter === 'MATCHED'
+                                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                    : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
                             }`}
-                    >
-                        <Filter size={12} />
-                        {showUnmatched ? 'Show Verified Employees' : 'Show Unmatched Employees'}
-                    </button>
+                        >
+                            <option value="ALL">All Employees</option>
+                            <option value="MATCHED">Matched Only</option>
+                            <option value="UNMATCHED">Unmatched Only</option>
+                        </select>
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                            <ChevronDown size={12} className={
+                                matchFilter === 'ALL'
+                                    ? 'text-blue-700'
+                                    : matchFilter === 'MATCHED'
+                                    ? 'text-emerald-700'
+                                    : 'text-amber-700'
+                            } />
+                        </div>
+                    </div>
 
                     <button
                         onClick={downloadExcel}
@@ -494,8 +522,10 @@ const AttendanceMonthly = () => {
                                                     )}
                                                     <div>
                                                         <span className="text-[11px] font-medium text-gray-900 block">{item.employeeName}</span>
-                                                        {isInEmployeesTable && (
-                                                            <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
+                                                        {isInEmployeesTable ? (
+                                                            <span className="text-[8px] text-blue-600 font-medium block">✓ Matched</span>
+                                                        ) : (
+                                                            <span className="text-[8px] text-amber-600 font-medium block">⚠️ Unmatched</span>
                                                         )}
                                                     </div>
                                                 </div>

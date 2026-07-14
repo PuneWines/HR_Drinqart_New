@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Search, Download, Calendar, Loader2, CheckCircle, X, Clock, Pencil, Filter, Users, User, Clock as ClockIcon, TrendingUp, Database, RefreshCw, ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon, Plus } from 'lucide-react';
+import { Search, Download, Calendar, Loader2, CheckCircle, X, Clock, Pencil, Filter, Users, User, Clock as ClockIcon, TrendingUp, Database, RefreshCw, ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon, Plus, ChevronDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 
@@ -115,6 +115,29 @@ const convert12hTo24h = (time12h) => {
   }
 };
 
+// Convert 24h time string (e.g., '14:00') to 12h AM/PM format (e.g., '2:00 PM')
+const convert24hTo12h = (time24) => {
+  if (!time24 || time24 === '-') return "";
+  try {
+    const trimmed = time24.trim();
+    if (trimmed.toLowerCase().includes('am') || trimmed.toLowerCase().includes('pm')) {
+      return trimmed.replace(/\s+/g, ' ');
+    }
+    const parts = trimmed.split(':');
+    if (parts.length < 2) return trimmed;
+    let hour = parseInt(parts[0], 10);
+    const minute = parseInt(parts[1], 10);
+    if (isNaN(hour) || isNaN(minute)) return trimmed;
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour === 0) hour = 12;
+    const mm = minute.toString().padStart(2, '0');
+    return `${hour}:${mm} ${ampm}`;
+  } catch (e) {
+    return time24;
+  }
+};
+
 // Format full date-time in IST
 const formatDateTimeIST = (utcDateStr) => {
   if (!utcDateStr || utcDateStr === '-') return '-';
@@ -189,14 +212,14 @@ const AttendanceDaily = () => {
   const [viewMode, setViewMode] = useState('daily');
   const [selectedDate, setSelectedDate] = useState(todayDate);
   const [employeesData, setEmployeesData] = useState([]); // Store employees table data
-  const [showUnmatched, setShowUnmatched] = useState(false);
+  const [matchFilter, setMatchFilter] = useState('ALL'); // 'ALL', 'MATCHED', 'UNMATCHED'
   const [currentPage, setCurrentPage] = useState(1);
   const [rosterData, setRosterData] = useState([]); // Store shift_roster data
 
   // Reset page to 1 on filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedStore, showUnmatched, selectedDate]);
+  }, [searchTerm, selectedStore, matchFilter, selectedDate]);
 
   const handleDateChange = (dateStr) => {
     if (!dateStr) return;
@@ -234,6 +257,20 @@ const AttendanceDaily = () => {
   const [markStatus, setMarkStatus] = useState('Present');
   const [markInTime, setMarkInTime] = useState('');
   const [markOutTime, setMarkOutTime] = useState('');
+  const [markEmployeeSearch, setMarkEmployeeSearch] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.employee-select-container')) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleRefresh = async () => {
     try {
@@ -288,7 +325,13 @@ const AttendanceDaily = () => {
 
   // Check if employee exists in employees table
   const isEmployeeInTable = (employeeId) => {
-    return employeesData.some(emp => emp.id === employeeId || emp.employee_id === employeeId);
+    if (!employeeId) return false;
+    const cleanId = employeeId.toString().trim().toLowerCase();
+    return employeesData.some(emp => {
+      const empId = emp.id?.toString().trim().toLowerCase();
+      const empEmployeeId = emp.employee_id?.toString().trim().toLowerCase();
+      return empId === cleanId || empEmployeeId === cleanId;
+    });
   };
 
   // Fetch roster data from shift_roster table
@@ -662,20 +705,43 @@ const AttendanceDaily = () => {
 
   const fetchAllEmployees = async () => {
     try {
-      let allLogs = [];
+      // 1. Fetch all employees from the 'employees' table (matched employees)
+      let dbEmployees = [];
       let page = 0;
       const pageSize = 1000;
       let hasMore = true;
 
       while (hasMore) {
         const { data, error } = await supabase
+          .from('employees')
+          .select('employee_id, name_as_per_aadhar, designation, joining_place')
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          dbEmployees = [...dbEmployees, ...data];
+          if (data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      const verifiedIds = new Set(dbEmployees.map(emp => emp.employee_id?.toString().trim().toLowerCase()).filter(Boolean));
+
+      // 2. Fetch unique employees from the 'attendance_logs' table (for unmatched employees)
+      let allLogs = [];
+      page = 0;
+      hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
           .from('attendance_logs')
-          .select(`
-            employee_id,
-            employee_name,
-            designation,
-            store_name
-          `)
+          .select('employee_id, employee_name, designation, store_name')
           .not('employee_id', 'is', null)
           .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -693,21 +759,42 @@ const AttendanceDaily = () => {
         }
       }
 
-      const uniqueEmployees = [
-        ...new Map(
-          allLogs.map(emp => [
-            emp.employee_id,
-            {
-              employee_id: emp.employee_id,
-              employee_name: emp.employee_name,
-              designation: emp.designation,
-              store_name: emp.store_name
-            }
-          ])
-        ).values()
-      ];
+      const logEmployeesMap = new Map();
+      allLogs.forEach(log => {
+        const empId = log.employee_id?.toString().trim();
+        if (empId) {
+          logEmployeesMap.set(empId.toLowerCase(), {
+            employee_id: empId,
+            employee_name: log.employee_name,
+            designation: log.designation,
+            store_name: log.store_name
+          });
+        }
+      });
 
-      setAllEmployees(uniqueEmployees);
+      const unmatchedEmployees = [];
+      for (const [key, logEmp] of logEmployeesMap.entries()) {
+        if (!verifiedIds.has(key)) {
+          unmatchedEmployees.push({
+            employee_id: logEmp.employee_id,
+            employee_name: logEmp.employee_name || 'Unmatched Employee',
+            designation: logEmp.designation || '-',
+            store_name: logEmp.store_name || '-',
+            is_matched: false
+          });
+        }
+      }
+
+      const matchedEmployees = dbEmployees.map(emp => ({
+        employee_id: emp.employee_id,
+        employee_name: emp.name_as_per_aadhar || 'No Name',
+        designation: emp.designation || '-',
+        store_name: emp.joining_place || '-',
+        is_matched: true
+      }));
+
+      const combinedEmployees = [...matchedEmployees, ...unmatchedEmployees];
+      setAllEmployees(combinedEmployees);
 
     } catch (err) {
       console.error('Error fetching attendance employees:', err);
@@ -726,6 +813,8 @@ const AttendanceDaily = () => {
       setMarkStatus('Present');
       setMarkInTime(`${selectedDate}T10:00`);
       setMarkOutTime(`${selectedDate}T18:00`);
+      setMarkEmployeeSearch('');
+      setIsDropdownOpen(false);
     }
   }, [isMarkModalOpen, selectedDate]);
 
@@ -746,8 +835,8 @@ const AttendanceDaily = () => {
           return timePart.substring(0, 5); // Ensure HH:MM format
         };
         manualPunches = {
-          "1": getHM(markInTime),
-          "2": getHM(markOutTime),
+          "1": getHM(markInTime) ? convert24hTo12h(getHM(markInTime)) : "",
+          "2": getHM(markOutTime) ? convert24hTo12h(getHM(markOutTime)) : "",
           "3": "",
           "4": "",
           "5": ""
@@ -1060,11 +1149,20 @@ const AttendanceDaily = () => {
   // Helper to compute metrics from manual punches
   // shift: optional shift_roster entry { start_time, end_time, shift_type }
   const calculateMetricsFromManualPunches = (punches, dateStr, shift = null) => {
-    const time1 = punches["1"];
-    const time2 = punches["2"];
-    const time3 = punches["3"];
-    const time4 = punches["4"];
-    const time5 = punches["5"];
+    const convertTo24h = (v) => {
+      if (!v) return "";
+      const s = v.toString().trim();
+      if (s.toLowerCase().includes('am') || s.toLowerCase().includes('pm')) {
+        return convert12hTo24h(s);
+      }
+      return s;
+    };
+
+    const time1 = convertTo24h(punches["1"]);
+    const time2 = convertTo24h(punches["2"]);
+    const time3 = convertTo24h(punches["3"]);
+    const time4 = convertTo24h(punches["4"]);
+    const time5 = convertTo24h(punches["5"]);
 
     const activeTimes = [time1, time2, time3, time4, time5].filter(Boolean);
 
@@ -1207,7 +1305,7 @@ const AttendanceDaily = () => {
         } else {
           manualKeys.forEach(key => {
             const val = manualPunches[key];
-            if (val !== undefined && val !== null) {
+            if (val !== undefined && val !== null && val !== '') {
               finalManualPunches.manual[key] = val;
             }
           });
@@ -1283,6 +1381,12 @@ const AttendanceDaily = () => {
         const employee = allEmployees.find(
           e => e.employee_id === employeeId
         );
+        const matchedDevice = DEVICES.find(
+          d => d.name.toUpperCase() === (employee?.store_name || '').toUpperCase()
+        );
+        const serialNo = matchedDevice ? matchedDevice.serial : '-';
+        const deviceId = matchedDevice ? matchedDevice.name : '-';
+
         const { data, error } = await supabase
           .from('attendance_logs')
           .insert({
@@ -1290,6 +1394,8 @@ const AttendanceDaily = () => {
             employee_name: employee?.employee_name || '',
             designation: employee?.designation || '',
             store_name: employee?.store_name || '',
+            serial_number: serialNo,
+            device_id: deviceId,
             attendance_date: date,
             status: newStatus,
             ...updateData
@@ -1399,12 +1505,21 @@ const AttendanceDaily = () => {
       });
     }
 
+    const parsePunchTo24h = (val) => {
+      if (!val) return "";
+      const s = val.toString().trim();
+      if (s.toLowerCase().includes('am') || s.toLowerCase().includes('pm')) {
+        return convert12hTo24h(s);
+      }
+      return s;
+    };
+
     setTempManualPunches({
-      "1": punchesObj["1"] || "",
-      "2": punchesObj["2"] || "",
-      "3": punchesObj["3"] || "",
-      "4": punchesObj["4"] || "",
-      "5": punchesObj["5"] || ""
+      "1": parsePunchTo24h(punchesObj["1"]),
+      "2": parsePunchTo24h(punchesObj["2"]),
+      "3": parsePunchTo24h(punchesObj["3"]),
+      "4": parsePunchTo24h(punchesObj["4"]),
+      "5": parsePunchTo24h(punchesObj["5"])
     });
 
     setNewPunchTime('');
@@ -1479,16 +1594,22 @@ const AttendanceDaily = () => {
     setIsSaving(true);
     setSaveError(null);
     try {
+      const formattedPunches = {
+        "1": tempManualPunches["1"] ? convert24hTo12h(tempManualPunches["1"]) : "",
+        "2": tempManualPunches["2"] ? convert24hTo12h(tempManualPunches["2"]) : "",
+        "3": tempManualPunches["3"] ? convert24hTo12h(tempManualPunches["3"]) : "",
+        "4": tempManualPunches["4"] ? convert24hTo12h(tempManualPunches["4"]) : "",
+        "5": tempManualPunches["5"] ? convert24hTo12h(tempManualPunches["5"]) : "",
+        is_manual: true
+      };
+
       await updateAttendanceStatus(
         selectedEmployee.id,
         selectedEmployee.date,
         tempStatus,
         tempInTime,
         tempOutTime,
-        {
-          ...tempManualPunches,
-          is_manual: true
-        }
+        formattedPunches
       );
     } catch (err) {
       setSaveError(err?.message || 'Failed to save attendance. Please try again.');
@@ -1574,12 +1695,19 @@ const AttendanceDaily = () => {
           emp.id?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStore = selectedStore === 'ALL' || emp.store_name === selectedStore;
         const isMatched = isEmployeeInTable(emp.id);
-        const matchesFilterMode = showUnmatched ? !isMatched : isMatched;
+        
+        let matchesFilterMode = true;
+        if (matchFilter === 'MATCHED') {
+          matchesFilterMode = isMatched;
+        } else if (matchFilter === 'UNMATCHED') {
+          matchesFilterMode = !isMatched;
+        }
+        
         return matchesSearch && matchesStore && matchesFilterMode;
       });
 
-    // 2. If showing verified (showUnmatched is false), append remaining employees from employees table
-    if (!showUnmatched) {
+    // 2. If showing verified or all (matchFilter is not UNMATCHED), append remaining employees from employees table
+    if (matchFilter !== 'UNMATCHED') {
       const hasAttendance = (empId) => {
         return employees.some(e => e.id === empId);
       };
@@ -1834,16 +1962,32 @@ const AttendanceDaily = () => {
             Mark Attendance
           </button>
 
-          <button
-            onClick={() => setShowUnmatched(prev => !prev)}
-            className={`flex h-10 items-center gap-1.5 px-3 py-1.5 font-medium text-xs transition-colors  rounded-md active:scale-95 transition-all ${showUnmatched
-              ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
-              : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+          <div className="relative">
+            <select
+              value={matchFilter}
+              onChange={(e) => setMatchFilter(e.target.value)}
+              className={`flex h-10 appearance-none items-center gap-1.5 pl-3 pr-8 py-1.5 font-semibold text-xs border rounded-md cursor-pointer transition-all focus:outline-none ${
+                matchFilter === 'ALL'
+                  ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+                  : matchFilter === 'MATCHED'
+                  ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
               }`}
-          >
-            <Filter size={12} />
-            {showUnmatched ? 'Show Verified Employees' : 'Show Unmatched Employees'}
-          </button>
+            >
+              <option value="ALL">All Employees</option>
+              <option value="MATCHED">Matched Only</option>
+              <option value="UNMATCHED">Unmatched Only</option>
+            </select>
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+              <ChevronDown size={12} className={
+                matchFilter === 'ALL'
+                  ? 'text-blue-700'
+                  : matchFilter === 'MATCHED'
+                  ? 'text-emerald-700'
+                  : 'text-amber-700'
+              } />
+            </div>
+          </div>
         </div>
 
         {viewMode === 'daily' && (
@@ -2019,8 +2163,10 @@ const AttendanceDaily = () => {
                                   </span>
                                 )}
                               </div>
-                              {isInEmployeesTable && (
-                                <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
+                              {isInEmployeesTable ? (
+                                <span className="text-[8px] text-blue-600 font-medium block">✓ Matched</span>
+                              ) : (
+                                <span className="text-[8px] text-amber-600 font-medium block">⚠️ Unmatched</span>
                               )}
                             </div>
                           </div>
@@ -2297,8 +2443,10 @@ const AttendanceDaily = () => {
                                       </span>
                                     )}
                                   </div>
-                                  {isInEmployeesTable && (
-                                    <span className="text-[8px] text-blue-600 font-medium block">✓ Verified</span>
+                                  {isInEmployeesTable ? (
+                                    <span className="text-[8px] text-blue-600 font-medium block">✓ Matched</span>
+                                  ) : (
+                                    <span className="text-[8px] text-amber-600 font-medium block">⚠️ Unmatched</span>
                                   )}
                                 </div>
                               </div>
@@ -2787,7 +2935,7 @@ const AttendanceDaily = () => {
       {/* Mark Attendance Modal Popup */}
       {isMarkModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsMarkModalOpen(false)}>
-          <div className="bg-white max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 animate-fade-in text-gray-900" onClick={e => e.stopPropagation()}>
+          <div className="bg-white max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 animate-fade-in text-gray-900 " onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div className="flex justify-between items-center p-4 border-b bg-gray-50">
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
@@ -2816,24 +2964,92 @@ const AttendanceDaily = () => {
               </div>
 
               {/* Employee Selection */}
-              <div>
+              <div className="employee-select-container relative">
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Employee <span className="text-red-500">*</span></label>
-                <select
-                  value={markEmployeeId}
-                  onChange={(e) => setMarkEmployeeId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900"
-                  required
-                >
-                  <option value="">Select Employee</option>
-                  {allEmployees.map(emp => (
-                    <option
-                      key={emp.employee_id}
-                      value={emp.employee_id}
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Type to search by name or ID..."
+                    value={markEmployeeSearch}
+                    onChange={(e) => {
+                      setMarkEmployeeSearch(e.target.value);
+                      setIsDropdownOpen(true);
+                      if (markEmployeeId) {
+                        setMarkEmployeeId('');
+                      }
+                    }}
+                    onFocus={() => setIsDropdownOpen(true)}
+                    className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 pr-8"
+                    required={!markEmployeeId}
+                  />
+                  {markEmployeeSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMarkEmployeeSearch('');
+                        setMarkEmployeeId('');
+                        setIsDropdownOpen(true);
+                      }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
-                      ({emp.employee_id}) {emp.employee_name}
-                    </option>
-                  ))}
-                </select>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <input
+                  type="hidden"
+                  value={markEmployeeId}
+                  required
+                />
+
+                {isDropdownOpen && (
+                  <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {(() => {
+                      const filtered = allEmployees.filter(emp => {
+                        const q = markEmployeeSearch.toLowerCase().trim();
+                        if (!q) return true;
+                        return (
+                          emp.employee_id?.toString().toLowerCase().includes(q) ||
+                          emp.employee_name?.toString().toLowerCase().includes(q)
+                        );
+                      });
+
+                      if (filtered.length === 0) {
+                        return (
+                          <div className="px-3 py-2 text-xs text-gray-500 italic text-center">
+                            No matching employees found
+                          </div>
+                        );
+                      }
+
+                      return filtered.map(emp => (
+                        <button
+                          key={emp.employee_id}
+                          type="button"
+                          onClick={() => {
+                            setMarkEmployeeId(emp.employee_id);
+                            setMarkEmployeeSearch(`(${emp.employee_id}) ${emp.employee_name}`);
+                            setIsDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 transition-colors flex flex-col ${
+                            markEmployeeId === emp.employee_id ? 'bg-indigo-50 font-semibold' : ''
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-gray-900 font-medium">{emp.employee_name}</span>
+                            <span className={`text-[9px] px-1 rounded font-semibold ${
+                              emp.is_matched ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-amber-50 text-amber-600 border border-amber-100'
+                            }`}>
+                              {emp.is_matched ? 'Matched' : 'Unmatched'}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-gray-500">ID: {emp.employee_id}</span>
+                        </button>
+                      ));
+                    })()}
+                  </div>
+                )}
               </div>
 
               {/* Status Selection */}
@@ -2883,7 +3099,7 @@ const AttendanceDaily = () => {
               )}
 
               {/* Actions */}
-              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100 pt-10">
                 <button
                   type="button"
                   onClick={() => setIsMarkModalOpen(false)}

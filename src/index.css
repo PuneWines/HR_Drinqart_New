@@ -2,8 +2,11 @@
 
 /* Custom utility for thin scrollbars */
 .scrollbar-thin {
-  scrollbar-width: thin; /* Firefox */
-  scrollbar-color: rgba(156, 163, 175, 0.5) transparent; /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-width: calc(2px);
+  /* Firefox */
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  /* Firefox */
 }
 
 /* Chrome, Edge, Safari */

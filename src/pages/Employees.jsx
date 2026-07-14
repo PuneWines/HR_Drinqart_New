@@ -1324,7 +1324,7 @@ export default function EmployeeManagement() {
                   <div className="lg:col-span-3 bg-gradient-to-br from-indigo-50/90 via-purple-50/50 to-indigo-50/30 border border-indigo-100 rounded-xl p-5 flex flex-col md:flex-row items-center gap-5 mb-2 shadow-sm transition-all duration-300 hover:shadow-md">
                     <div className="bg-white p-2.5 rounded-xl shadow-sm border border-indigo-100 shrink-0">
                       <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(window.location.origin + '/register')}`}
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(window.location.origin + '/hr_system/register')}`}
                         alt="Registration QR Code"
                         className="w-[120px] h-[120px] md:w-[130px] md:h-[130px] block"
                       />
@@ -1342,7 +1342,7 @@ export default function EmployeeManagement() {
                       </p>
                       <div className="pt-1 flex flex-wrap gap-2 justify-center md:justify-start">
                         <a
-                          href="/register"
+                          href="/hr_system/register"
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3.5 py-1.5  shadow-sm transition-all duration-200"

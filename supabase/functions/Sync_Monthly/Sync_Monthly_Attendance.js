@@ -18,11 +18,11 @@
 // // Device registry (matches DEVICES constant in AttendanceMonthly.jsx)
 // // ---------------------------------------------------------------------------
 // const DEVICES = [
-//   { name: "BAWDHAN", apiName: "BAVDHAN", serial: "C26238441B1E342D" },
-//   { name: "HINJEWADI", apiName: "HINJEWADI", serial: "AMDB25061400335" },
-//   { name: "WAGHOLI", apiName: "WAGHOLI", serial: "AMDB25061400343" },
-//   { name: "AKOLE", apiName: "AKOLE", serial: "C262CC13CF202038" },
-//   { name: "MUMBAI", apiName: "MUMBAI", serial: "C2630450C32A2327" }
+//   { name: "BAWDHAN",   apiName: "BAVDHAN",   serial: "C26238441B1E342D" },
+//   { name: "HINJEWADI", apiName: "HINJEWADI", serial: "AMDB25061400335"  },
+//   { name: "WAGHOLI",   apiName: "WAGHOLI",   serial: "AMDB25061400343"  },
+//   { name: "AKOLE",     apiName: "AKOLE",     serial: "C262CC13CF202038" },
+//   { name: "MUMBAI",    apiName: "MUMBAI",    serial: "C2630450C32A2327" }
 // ];
 
 // const monthNames = [

@@ -235,8 +235,7 @@ export const syncMonthlyAttendanceFromApi = async (month, year, device) => {
         .from('attendance_logs')
         .select('*')
         .gte('attendance_date', fromDate)
-        .lte('attendance_date', toDate)
-        .eq('serial_number', device.serial);
+        .lte('attendance_date', toDate);
 
     if (dbError) {
         console.error('Error fetching daily attendance logs from DB:', dbError);
@@ -247,6 +246,29 @@ export const syncMonthlyAttendanceFromApi = async (month, year, device) => {
         return [];
     }
 
+    // Fetch active employees to map their stores
+    const { data: dbEmployees, error: empError } = await supabase
+        .from('employees')
+        .select('employee_id, joining_place');
+
+    if (empError) {
+        console.error('Error fetching employees for store map:', empError);
+    }
+    const empStoreMap = {};
+    (dbEmployees || []).forEach(emp => {
+        if (emp.employee_id) {
+            empStoreMap[emp.employee_id.toString().trim().toLowerCase()] = emp.joining_place || '';
+        }
+    });
+
+    const DEVICES = [
+        { name: 'BAWDHAN', serial: 'C26238441B1E342D' },
+        { name: 'HINJEWADI', serial: 'AMDB25061400335' },
+        { name: 'WAGHOLI', serial: 'AMDB25061400343' },
+        { name: 'AKOLE', serial: 'C262CC13CF202038' },
+        { name: 'MUMBAI', serial: 'C2630450C32A2327' }
+    ];
+
     const monthlyAgg = {};
     const totalSundays = getSundaysCount(month, year);
     const totalDaysInMonth = getDaysInMonth(month, year);
@@ -254,6 +276,18 @@ export const syncMonthlyAttendanceFromApi = async (month, year, device) => {
     dbLogs.forEach(row => {
         const id = row.employee_id;
         if (!id) return;
+
+        let serial = row.serial_number;
+        if (!serial || serial === '' || serial === '-') {
+            const storeName = row.store_name || empStoreMap[id.toString().trim().toLowerCase()] || '';
+            const matchedDevice = DEVICES.find(d => d.name.toUpperCase() === storeName.toUpperCase());
+            if (matchedDevice) {
+                serial = matchedDevice.serial;
+            }
+        }
+
+        if (!serial || serial === '' || serial === '-') return;
+        if (serial !== device.serial) return;
 
         if (!monthlyAgg[id]) {
             monthlyAgg[id] = {

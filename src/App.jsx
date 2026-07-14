@@ -38,11 +38,11 @@ function App() {
     setUser(null)
   }
 
-  const isPublicRoute = window.location.pathname === '/register'
+  const isPublicRoute = window.location.pathname === '/hr_system/register'
 
   if (isPublicRoute) {
     return (
-      <BrowserRouter>
+      <BrowserRouter basename="/hr_system/">
         <Routes>
           <Route path="/register" element={<PublicRegister />} />
         </Routes>
@@ -61,7 +61,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/hr_system/">
       <div className="min-h-screen bg-slate-50 flex">
         {/* Sidebar */}
         <Sidebar
@@ -73,11 +73,11 @@ function App() {
 
         {/* Main content */}
         <div
-          className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out ${collapsed ? 'lg:ml-16' : 'lg:ml-64'
+          className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out min-w-0 ${collapsed ? 'lg:ml-16' : 'lg:ml-64'
             }`}
         >
           {/* Page content */}
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto min-w-0">
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/employees" element={<Employees />} />

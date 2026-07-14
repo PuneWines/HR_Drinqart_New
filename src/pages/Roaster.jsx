@@ -333,7 +333,7 @@ const Roster = () => {
         try {
             const { data, error } = await supabase
                 .from('employees')
-                .select('id, employee_id, name_as_per_aadhar, designation, status, joining_place')
+                .select('id, employee_id, name_as_per_aadhar, designation, status, joining_place, candidate_photo')
                 .eq('status', 'Active')
                 .order('name_as_per_aadhar');
 
@@ -1223,9 +1223,17 @@ const Roster = () => {
                                             <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
                                                 <td className="sticky left-0 bg-white hover:bg-gray-50 z-10 px-3 py-2 border-r border-gray-200">
                                                     <div className="flex items-center gap-2">
-                                                        <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
-                                                            {employee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
-                                                        </div>
+                                                        {employee.candidate_photo ? (
+                                                            <img
+                                                                src={employee.candidate_photo}
+                                                                alt={employee.name_as_per_aadhar}
+                                                                className="w-7 h-7 rounded-full object-cover border border-gray-200"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
+                                                                {employee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
+                                                            </div>
+                                                        )}
                                                         <div>
                                                             <p className="text-xs font-medium text-gray-800">{employee.name_as_per_aadhar}</p>
                                                             <p className="text-[9px] text-gray-500">{employee.employee_id}</p>
@@ -1350,9 +1358,17 @@ const Roster = () => {
                                         <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
                                             <td className="sticky left-0 bg-white hover:bg-gray-50 z-10 px-2 py-1.5 border-r border-gray-200">
                                                 <div className="flex items-center gap-1.5">
-                                                    <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
-                                                        {employee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
-                                                    </div>
+                                                    {employee.candidate_photo ? (
+                                                        <img
+                                                            src={employee.candidate_photo}
+                                                            alt={employee.name_as_per_aadhar}
+                                                            className="w-7 h-7 rounded-full object-cover border border-gray-200"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-semibold">
+                                                            {employee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
+                                                        </div>
+                                                    )}
                                                     <div>
                                                         <p className="text-xs font-medium text-gray-800">{employee.name_as_per_aadhar}</p>
                                                         <p className="text-[9px] text-gray-500">{employee.employee_id}</p>
@@ -1432,9 +1448,17 @@ const Roster = () => {
                         {selectedEmployee && (
                             <div className="p-4 border-b bg-gray-50/50">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
-                                        {selectedEmployee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
-                                    </div>
+                                    {selectedEmployee.candidate_photo ? (
+                                        <img
+                                            src={selectedEmployee.candidate_photo}
+                                            alt={selectedEmployee.name_as_per_aadhar}
+                                            className="w-8 h-8 rounded-full object-cover border border-gray-200"
+                                        />
+                                    ) : (
+                                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
+                                            {selectedEmployee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
+                                        </div>
+                                    )}
                                     <div>
                                         <div className="text-sm font-medium text-gray-800">{selectedEmployee.name_as_per_aadhar}</div>
                                         <div className="text-[10px] text-gray-500">{selectedEmployee.designation} • {selectedEmployee.employee_id}</div>
@@ -1710,9 +1734,17 @@ const Roster = () => {
                             {/* Header */}
                             <div className="flex items-center justify-between p-4 border-b bg-gray-50">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
-                                        {selectedEmployee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
-                                    </div>
+                                    {selectedEmployee.candidate_photo ? (
+                                        <img
+                                            src={selectedEmployee.candidate_photo}
+                                            alt={selectedEmployee.name_as_per_aadhar}
+                                            className="w-10 h-10 rounded-full object-cover border border-gray-200"
+                                        />
+                                    ) : (
+                                        <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                                            {selectedEmployee.name_as_per_aadhar?.charAt(0).toUpperCase() || '?'}
+                                        </div>
+                                    )}
                                     <div>
                                         <h3 className="font-semibold text-base text-gray-900">{selectedEmployee.name_as_per_aadhar}</h3>
                                         <p className="text-xs text-gray-500">ID: {selectedEmployee.employee_id}</p>
