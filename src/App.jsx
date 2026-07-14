@@ -38,11 +38,11 @@ function App() {
     setUser(null)
   }
 
-  const isPublicRoute = window.location.pathname === '/hr_system/register'
+  const isPublicRoute = window.location.pathname === '/register'
 
   if (isPublicRoute) {
     return (
-      <BrowserRouter basename="/hr_system/">
+      <BrowserRouter>
         <Routes>
           <Route path="/register" element={<PublicRegister />} />
         </Routes>
@@ -61,7 +61,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter basename="/hr_system/">
+    <BrowserRouter>
       <div className="min-h-screen bg-slate-50 flex">
         {/* Sidebar */}
         <Sidebar

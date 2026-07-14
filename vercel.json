@@ -4,6 +4,6 @@
       "source": "/api/device-logs",
       "destination": "http://103.195.203.77:15167/api/v2/WebAPI/GetDeviceLogs"
     },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/:path((?!assets/).*)", "destination": "/index.html" }
   ]
 }
