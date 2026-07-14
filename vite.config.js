@@ -10,6 +10,7 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    strictPort: true,
     proxy: {
       '/api/device-logs': {
         target: 'http://103.195.203.77:15167',
